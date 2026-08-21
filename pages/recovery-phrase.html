@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recovery Phrase — EtherVault</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <nav class="navbar navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="../index.html">
+                <i class="bi bi-hexagon-fill text-gradient fs-4"></i>
+                <span class="brand-name">Ether<span class="text-gradient">Vault</span></span>
+            </a>
+            <a href="../index.html" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-house-door me-1"></i>Home
+            </a>
+        </div>
+    </nav>
+
+    <div class="container d-flex justify-content-center align-items-center min-vh-100 py-5">
+        <div class="col-lg-8 col-md-10">
+            <div class="card shimmer fade-in">
+                <div class="card-body p-4 p-md-5">
+                    <!-- Step header -->
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="step-indicator">
+                            <div class="step-badge">2</div>
+                            <span>Recovery Phrase</span>
+                        </div>
+                        <span class="badge badge-violet font-mono">Step 2 / 4</span>
+                    </div>
+
+                    <div class="progress mb-4" style="height: 4px;">
+                        <div class="progress-bar" style="width: 50%"></div>
+                    </div>
+
+                    <h2 class="fw-bold mb-2">Secret Recovery Phrase</h2>
+                    <p class="text-muted small mb-4">Write down these 12 words in order and keep them somewhere safe.</p>
+
+                    <!-- Warning -->
+                    <div class="alert alert-danger mb-4">
+                        <div class="d-flex align-items-start gap-3">
+                            <i class="bi bi-exclamation-triangle-fill fs-3 mt-1"></i>
+                            <div>
+                                <strong class="d-block mb-1">Never share your Secret Recovery Phrase.</strong>
+                                <span class="small">Anyone with these 12 words can access your funds permanently. Store them offline.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Loading State -->
+                    <div id="loadingState" class="text-center py-5" style="display:none;">
+                        <div class="spinner-border spinner-violet mb-3" role="status"></div>
+                        <p class="text-muted small">Generating cryptographically secure wallet...</p>
+                    </div>
+
+                    <!-- Phrase Container -->
+                    <div id="phraseContainer">
+                        <!-- 12-word grid -->
+                        <div id="phraseGrid" class="row g-2 mb-4"></div>
+
+                        <!-- Copy / Download -->
+                        <div class="row g-2 mb-4">
+                            <div class="col-6">
+                                <button class="btn btn-outline-cyan w-100" id="copyPhraseBtn">
+                                    <i class="bi bi-clipboard-check me-1"></i>Copy Phrase
+                                </button>
+                            </div>
+                            <div class="col-6">
+                                <button class="btn btn-outline-secondary w-100" id="downloadPhraseBtn">
+                                    <i class="bi bi-download me-1"></i>Download .txt
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Copied alert -->
+                        <div id="copyAlert" class="alert alert-success small mb-3" style="display:none;">
+                            <i class="bi bi-check-circle-fill me-2"></i>Phrase copied to clipboard!
+                        </div>
+
+                        <!-- Acknowledge -->
+                        <div class="glass-panel mb-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="acknowledgePhrase" required>
+                                <label class="form-check-label" for="acknowledgePhrase">
+                                    <i class="bi bi-shield-check-fill me-1" style="color: var(--green)"></i>
+                                    I have safely saved my 12-word recovery phrase offline.
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary btn-lg" id="continueBtn" disabled>
+                                Continue to Verification <i class="bi bi-arrow-right ms-1"></i>
+                            </button>
+                            <a href="../index.html" class="btn btn-outline-secondary">Cancel</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6/dist/ethers.umd.min.js"></script>
+    <script src="../js/storage.js"></script>
+    <script src="../js/wallet.js"></script>
+    <script src="../js/app.js"></script>
+</body>
+</html>
