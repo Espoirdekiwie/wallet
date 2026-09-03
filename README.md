@@ -1,16 +1,73 @@
-# React + Vite
+# ⬡ EtherVault — Web3 Crypto Wallet
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+**EtherVault** is a modern, non-custodial Web3 Ethereum cryptocurrency wallet built with React, Ethers.js v6, and Framer Motion. It delivers client-side security with an obsidian glassmorphism user interface.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## ✨ Key Features
 
-## React Compiler
+- **🔒 Non-Custodial & Client-Side Encryption**:
+  - BIP39 standard 12-word mnemonic phrase generation and restoration.
+  - Password-derived Keystore encryption using AES-128-CTR and Scrypt KDF.
+  - Zero telemetry — private keys never leave your browser session.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **📱 Modern Navigation**:
+  - Animated collapsible glassmorphic drawer accessible via universal hamburger menu (**☰**).
+  - Dismissible via backdrop click, `Escape` key, or route selection.
+  - Responsive: Full-width overlay on desktop and 80% screen width on mobile.
 
-## Expanding the Oxlint configuration
+- **💎 Dashboard & Portfolio**:
+  - Real-time ETH and multi-token balance tracking.
+  - 3D interactive holographic wallet card with mouse-tilt physics.
+  - Live gas tracker and quick transaction action cards.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- **💸 Send & Receive Assets**:
+  - Fast ETH and ERC-20 token transfers with address validation.
+  - Dynamic QR code generator adhering to the EIP-681 standard.
+
+- **📜 Activity & Ledger History**:
+  - Filterable transaction history (Sent, Received, Swaps).
+  - One-click CSV export and transaction hash clipboard utility.
+
+- **⚙️ Settings & Security Controls**:
+  - Global **Dark Mode** toggle with persistent local preferences.
+  - Secure credential viewer (decrypt and export 12-word seed or private key).
+  - Clear Wallet data workflow with confirmation dialog.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Framework**: React 19 + Vite
+- **Web3 & Cryptography**: Ethers.js v6, BIP39 standard
+- **Animations**: Framer Motion
+- **UI & Styling**: Vanilla CSS + Bootstrap 5 (Glassmorphism design system)
+- **Icons**: React Icons (Feather, Bootstrap, FontAwesome)
+- **Deployment**: Vercel ready (`vercel.json` SPA rewrites)
+
+---
+
+## 🚀 Quick Start
+
+### 1. Clone & Install Dependencies
+```bash
+git clone https://github.com/Espoirdekiwie/wallet.git
+cd wallet
+npm install
+```
+
+### 2. Run Development Server
+```bash
+npm run dev
+```
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+### 3. Build for Production
+```bash
+npm run build
+```
+
+---
+
+## 📄 License
+MIT License. Free for open-source Web3 development.
