@@ -1,0 +1,10 @@
+export { default as Home } from './Home';
+export { default as CreatePassword } from './CreatePassword';
+export { default as RecoveryPhrase } from './RecoveryPhrase';
+export { default as ImportWallet } from './ImportWallet';
+export { default as Dashboard } from './Dashboard';
+export { default as Send } from './Send';
+export { default as Receive } from './Receive';
+export { default as Transactions } from './Transactions';
+export { default as Settings } from './Settings';
+export { default as NotFound } from './NotFound';

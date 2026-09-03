@@ -1,0 +1,79 @@
+/* ==========================================================================
+   ETHERVAULT — DESIGN TOKENS & VARIABLES
+   Theme: Obsidian Dark Glassmorphism + Electric Orange & Royal Neon Purple
+   ========================================================================== */
+
+:root {
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, #FF6B00 0%, #A855F7 100%);
+  --gradient-primary-hover: linear-gradient(135deg, #FF8533 0%, #B86BFC 100%);
+  --gradient-orange: linear-gradient(135deg, #FF8C00 0%, #FF4500 100%);
+  --gradient-purple: linear-gradient(135deg, #A855F7 0%, #7C3AED 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(255, 107, 0, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
+  --gradient-hologram: linear-gradient(135deg, #FF6B00 0%, #E11D48 35%, #9333EA 70%, #6366F1 100%);
+  --gradient-card: linear-gradient(135deg, rgba(25, 19, 42, 0.8) 0%, rgba(15, 11, 26, 0.9) 100%);
+
+  /* Primary Brand Colors */
+  --orange: #FF6B00;
+  --orange-light: #FFA14A;
+  --orange-dark: #CC5500;
+  --orange-glow: rgba(255, 107, 0, 0.4);
+
+  --purple: #A855F7;
+  --purple-light: #C084FC;
+  --purple-dark: #7C3AED;
+  --purple-glow: rgba(168, 85, 247, 0.4);
+
+  /* Functional Accents */
+  --green: #10B981;
+  --green-glow: rgba(16, 185, 129, 0.35);
+  --danger: #F43F5E;
+  --danger-glow: rgba(244, 63, 94, 0.35);
+  --warning: #F59E0B;
+  --cyan: #06B6D4;
+
+  /* Surfaces - Dark Default */
+  --bg-deep: #07060A;
+  --bg-surface: #0E0C16;
+  --bg-card: #151124;
+  --bg-card-hover: #1D1732;
+
+  /* Glassmorphism Specs */
+  --glass-bg: rgba(21, 17, 36, 0.65);
+  --glass-bg-elevated: rgba(28, 22, 48, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-hover: rgba(255, 255, 255, 0.18);
+  --glass-border-orange: rgba(255, 107, 0, 0.35);
+  --glass-border-purple: rgba(168, 85, 247, 0.35);
+  --glass-blur: blur(24px) saturate(190%);
+  --glass-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+
+  /* Typography */
+  --text-main: #F8FAFC;
+  --text-muted: #94A3B8;
+  --text-dim: #64748B;
+
+  --font-heading: 'Outfit', sans-serif;
+  --font-body: 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Light / Cyber Mode Tokens */
+[data-theme="light"] {
+  --bg-deep: #0F172A;
+  --bg-surface: #1E293B;
+  --bg-card: #1E293B;
+  --bg-card-hover: #334155;
+
+  --glass-bg: rgba(30, 41, 59, 0.75);
+  --glass-bg-elevated: rgba(51, 65, 85, 0.85);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-border-hover: rgba(255, 255, 255, 0.25);
+  --glass-border-orange: rgba(255, 107, 0, 0.45);
+  --glass-border-purple: rgba(168, 85, 247, 0.45);
+  --glass-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+
+  --text-main: #FFFFFF;
+  --text-muted: #CBD5E1;
+  --text-dim: #94A3B8;
+}
