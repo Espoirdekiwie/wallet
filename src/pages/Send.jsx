@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ethers } from 'ethers';
@@ -21,11 +21,13 @@ import {
 } from '../components';
 import { mockWallet, saveTransaction } from '../utils/mockData';
 import { useWallet } from '../context';
+import { walletService } from '../services';
+import { sendTransaction, getBalance } from '../services/blockchain';
 
 function Send() {
   const navigate = useNavigate();
   const { address } = useWallet();
-  const activeAddress = address || mockWallet.address;
+  const activeAddress = address || walletService.getStoredAddress() || mockWallet.address;
 
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
@@ -35,10 +37,21 @@ function Send() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [txDetails, setTxDetails] = useState(null);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [availableBalance, setAvailableBalance] = useState('0.0000');
 
   const ethPrice = 3250.45;
   const numAmount = parseFloat(amount || '0');
   const usdEquivalent = (numAmount * ethPrice).toFixed(2);
+
+  // Fetch live balance to assist input and validation
+  useEffect(() => {
+    if (!activeAddress) return;
+    getBalance(activeAddress)
+      .then((res) => {
+        if (res && res.formatted) setAvailableBalance(res.formatted);
+      })
+      .catch((err) => console.warn('Balance check error:', err));
+  }, [activeAddress]);
 
   // Quick Paste handler
   const handlePaste = async () => {
@@ -81,15 +94,25 @@ function Send() {
     return isValid;
   };
 
-  const handleSendSubmit = (e) => {
+  const handleSendSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
+    // Retrieve active private key from local storage
+    const privateKey = walletService.getStoredPrivateKey();
+    if (!privateKey) {
+      showToast.error('No private key available to sign transaction. Please import or create a wallet.');
+      return;
+    }
+
     setLoading(true);
 
-    // Simulate local demo transaction creation (DO NOT broadcast to blockchain)
-    setTimeout(() => {
-      const randomHex = Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+    try {
+      showToast.info('Broadcasting transaction to Sepolia Testnet...');
+      
+      // PART 5: Broadcast real transaction to Sepolia
+      const result = await sendTransaction(privateKey, recipient.trim(), amount);
+
       const newTx = {
         id: `tx-${Date.now()}`,
         type: 'Send',
@@ -99,23 +122,27 @@ function Send() {
         to: recipient.trim(),
         from: activeAddress,
         timestamp: 'Just now',
-        status: 'Confirmed',
-        hash: `0x${randomHex}`
+        status: result.status,
+        hash: result.hash,
+        gasUsed: result.gasUsed
       };
 
-      // Store demo transaction in localStorage
+      // Store transaction in localStorage
       saveTransaction(newTx);
-
       setTxDetails(newTx);
-      setLoading(false);
       setIsSuccess(true);
-      showToast.success('Transaction Successful!');
+      showToast.success(`Transaction Confirmed! Hash: ${result.hash.slice(0, 10)}...`);
 
-      // Navigate back to Dashboard after short confirmation
+      // Automatically return to Dashboard after confirmation
       setTimeout(() => {
         navigate('/dashboard');
-      }, 2200);
-    }, 1200);
+      }, 3500);
+    } catch (error) {
+      console.error('Send transaction error:', error);
+      showToast.error(error.message || 'Transaction failed. Check balance and network.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -154,17 +181,45 @@ function Send() {
                     initial={{ opacity: 0, scale: 0.95, y: -10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="alert alert-success p-4 mb-4 text-center rounded-4"
+                    className="alert alert-success p-4 mb-4 rounded-4"
                     style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1.5px solid #10B981' }}
                   >
-                    <FiCheckCircle className="text-success display-4 mb-2 d-block mx-auto" />
-                    <h4 className="fw-bold text-success mb-1">Transaction Successful</h4>
-                    <p className="small text-muted font-mono mb-2">
-                      Sent {txDetails?.amount} ETH to {txDetails?.to?.slice(0, 10)}...
+                    <FiCheckCircle className="text-success display-4 mb-2 d-block mx-auto text-center" />
+                    <h4 className="fw-bold text-success mb-2 text-center">Transaction Confirmed</h4>
+                    <p className="small text-muted font-mono mb-3 text-center">
+                      Sent {txDetails?.amount} ETH to {txDetails?.to}
                     </p>
-                    <span className="badge bg-success bg-opacity-25 text-success font-mono">
-                      Returning to Dashboard...
-                    </span>
+
+                    <div className="glass-panel p-3 mb-3 font-mono small text-start">
+                      <div className="d-flex justify-content-between mb-1">
+                        <span className="text-muted">Status:</span>
+                        <span className="badge bg-success bg-opacity-25 text-success">
+                          {txDetails?.status || 'Confirmed'}
+                        </span>
+                      </div>
+                      <div className="d-flex justify-content-between mb-1">
+                        <span className="text-muted">Gas Used:</span>
+                        <span className="text-white">{txDetails?.gasUsed || '21000'} units</span>
+                      </div>
+                      <div className="d-flex justify-content-between align-items-center">
+                        <span className="text-muted">Tx Hash:</span>
+                        <a
+                          href={`https://sepolia.etherscan.io/tx/${txDetails?.hash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-orange text-decoration-none fw-bold"
+                          title="View on Sepolia Etherscan"
+                        >
+                          {txDetails?.hash ? `${txDetails.hash.slice(0, 10)}...${txDetails.hash.slice(-8)}` : 'N/A'} ↗
+                        </a>
+                      </div>
+                    </div>
+
+                    <div className="text-center">
+                      <span className="badge bg-success bg-opacity-25 text-success font-mono">
+                        Returning to Dashboard...
+                      </span>
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -205,6 +260,18 @@ function Send() {
 
                 {/* Field 2: Amount (ETH) */}
                 <div className="mb-4">
+                  <div className="d-flex justify-content-between align-items-center mb-1">
+                    <span className="small text-muted font-mono">Available: {availableBalance} ETH</span>
+                    {parseFloat(availableBalance) > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setAmount((Math.max(0, parseFloat(availableBalance) - 0.001)).toFixed(4))}
+                        className="btn btn-sm btn-vault-glass py-0 px-2 font-mono small text-purple"
+                      >
+                        Max (after gas)
+                      </button>
+                    )}
+                  </div>
                   <Input
                     label="Amount (ETH)"
                     type="number"
@@ -219,25 +286,25 @@ function Send() {
                     error={amountError}
                     mono
                     icon={<FaEthereum className="text-purple" />}
-                    helperText={amount && numAmount > 0 ? `≈ $${usdEquivalent} USD` : 'Enter transfer amount in ETH'}
+                    helperText={amount && numAmount > 0 ? `≈ $${usdEquivalent} USD` : 'Enter transfer amount in Sepolia ETH'}
                     disabled={loading || isSuccess}
                     required
                   />
                 </div>
 
-                {/* Demo Notice Panel */}
+                {/* Live Sepolia Notice Panel */}
                 <div className="glass-panel p-3 mb-4 font-mono small text-muted">
                   <div className="d-flex justify-content-between mb-1">
-                    <span>Transaction Mode:</span>
-                    <span className="badge bg-warning bg-opacity-25 text-warning font-mono">Demo Simulation</span>
+                    <span>Network:</span>
+                    <span className="badge bg-purple bg-opacity-25 text-purple font-mono">Ethereum Sepolia</span>
                   </div>
                   <div className="d-flex justify-content-between mb-1">
-                    <span>Estimated Gas:</span>
-                    <span className="text-success">0.0000 ETH (Free)</span>
+                    <span>RPC Endpoint:</span>
+                    <span className="text-dim">ethereum-sepolia-rpc.publicnode.com</span>
                   </div>
-                  <div className="d-flex justify-content-between text-dim">
-                    <span>Local Storage:</span>
-                    <span>Saved locally to activity history</span>
+                  <div className="d-flex justify-content-between">
+                    <span>Gas Execution:</span>
+                    <span className="text-success">Live On-Chain (Sepolia)</span>
                   </div>
                 </div>
 
@@ -251,7 +318,7 @@ function Send() {
                   className="w-100"
                   icon={<FiArrowUpRight className="fs-5" />}
                 >
-                  {loading ? 'Processing Transfer...' : isSuccess ? 'Transaction Successful' : 'Send Transaction'}
+                  {loading ? 'Broadcasting to Sepolia...' : isSuccess ? 'Transaction Confirmed' : 'Send Transaction'}
                 </Button>
               </form>
             </Card>

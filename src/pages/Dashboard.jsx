@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -12,7 +12,8 @@ import {
   FiEyeOff, 
   FiTrendingUp,
   FiX,
-  FiAlertTriangle
+  FiAlertTriangle,
+  FiRefreshCw
 } from 'react-icons/fi';
 import { FaEthereum } from 'react-icons/fa';
 import { BsHexagon, BsCurrencyDollar } from 'react-icons/bs';
@@ -29,6 +30,7 @@ import {
 } from '../components';
 import { mockWallet, getStoredTransactions, shortenAddress } from '../utils/mockData';
 import { useWallet } from '../context';
+import { getBalance, getNetwork } from '../services/blockchain';
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -36,9 +38,11 @@ function Dashboard() {
   const activeAddress = address || mockWallet.address;
   const recentTransactions = getStoredTransactions().slice(0, 2);
 
-  // Default ETH Balance: 0 ETH (as requested)
-  const ethBalance = '0.0000';
-  const usdBalance = '0.00';
+  // Live Sepolia ETH and USD Balance states
+  const [ethBalance, setEthBalance] = useState('0.0000');
+  const [usdBalance, setUsdBalance] = useState('0.00');
+  const [networkName, setNetworkName] = useState('Ethereum Sepolia');
+  const [loadingBalance, setLoadingBalance] = useState(false);
   const ethPrice = mockWallet.ethPrice; // $3,250.45 reference price
 
   const [isUsd, setIsUsd] = useState(false);
@@ -48,7 +52,63 @@ function Dashboard() {
   const [isNetworkOpen, setIsNetworkOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [selectedNetwork, setSelectedNetwork] = useState('mainnet');
+  const [selectedNetwork, setSelectedNetwork] = useState('sepolia');
+
+  // PART 3: Fetch live balance from Sepolia blockchain & refresh every 15s
+  const handleManualRefresh = useCallback(async () => {
+    if (!activeAddress) return;
+    try {
+      setLoadingBalance(true);
+      const balanceData = await getBalance(activeAddress);
+      setEthBalance(balanceData.formatted);
+
+      const etherValue = parseFloat(balanceData.ether || '0');
+      const calculatedUsd = (etherValue * ethPrice).toFixed(2);
+      setUsdBalance(calculatedUsd);
+
+      const net = await getNetwork();
+      if (net && net.name) {
+        setNetworkName(net.name);
+      }
+      showToast.success(`Balance updated: ${balanceData.formatted} ETH`);
+    } catch (err) {
+      console.warn('Sepolia balance fetch warning:', err);
+      showToast.warning('Failed to fetch balance. Check network connection.');
+    } finally {
+      setLoadingBalance(false);
+    }
+  }, [activeAddress, ethPrice]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadData = async () => {
+      if (!activeAddress) return;
+      try {
+        const balanceData = await getBalance(activeAddress);
+        if (!isCancelled) {
+          setEthBalance(balanceData.formatted);
+          const etherValue = parseFloat(balanceData.ether || '0');
+          setUsdBalance((etherValue * ethPrice).toFixed(2));
+        }
+
+        const net = await getNetwork();
+        if (!isCancelled && net && net.name) {
+          setNetworkName(net.name);
+        }
+      } catch (err) {
+        console.warn('Sepolia balance fetch warning:', err);
+      }
+    };
+
+    loadData();
+    const interval = setInterval(loadData, 15000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeAddress, ethPrice]);
 
   const toggleCurrency = () => {
     setIsUsd(!isUsd);
@@ -74,7 +134,7 @@ function Dashboard() {
     <>
       <Navbar
         walletAddress={activeAddress}
-        network={selectedNetwork === 'mainnet' ? 'Ethereum Mainnet' : selectedNetwork}
+        network={networkName}
         onNetworkClick={() => setIsNetworkOpen(true)}
         onMobileMenuClick={() => setIsMobileNavOpen(true)}
       />
@@ -99,6 +159,17 @@ function Dashboard() {
 
               {/* Top Quick Actions */}
               <div className="d-flex align-items-center gap-2 flex-wrap">
+                <Button
+                  variant="glass"
+                  size="sm"
+                  onClick={handleManualRefresh}
+                  loading={loadingBalance}
+                  icon={<FiRefreshCw className={loadingBalance ? 'spin-anim' : ''} />}
+                  title="Refresh Sepolia on-chain balance"
+                >
+                  Refresh
+                </Button>
+
                 <Button
                   variant="glass"
                   size="sm"

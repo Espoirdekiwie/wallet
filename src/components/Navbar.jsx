@@ -7,7 +7,7 @@ import { shortenAddress } from '../utils/mockData';
 
 function Navbar({
   walletAddress = '0x71C8411F49B90D8198fA01119B3e329B35ffe296',
-  network = 'Ethereum Mainnet',
+  network = 'Ethereum Sepolia',
   onNetworkClick = () => {},
   onMobileMenuClick = () => {}
 }) {

@@ -21,11 +21,12 @@ import {
 } from '../components';
 import { mockWallet } from '../utils/mockData';
 import { useWallet } from '../context';
+import { walletService } from '../services';
 
 function Receive() {
   const navigate = useNavigate();
   const { address } = useWallet();
-  const activeAddress = address || mockWallet.address;
+  const activeAddress = address || walletService.getStoredAddress() || mockWallet.address;
 
   const [amount, setAmount] = useState('');
   const [copied, setCopied] = useState(false);

@@ -119,7 +119,7 @@ function Settings() {
     <>
       <Navbar
         walletAddress={activeAddress}
-        network={selectedNetwork === 'mainnet' ? 'Ethereum Mainnet' : selectedNetwork}
+        network="Ethereum Sepolia"
         onNetworkClick={() => setIsNetworkModalOpen(true)}
         onMobileMenuClick={() => setIsMobileNavOpen(true)}
       />

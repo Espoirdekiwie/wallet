@@ -2,25 +2,27 @@
  * walletService.js
  * 
  * Core cryptographic wallet management using ethers.js v6.
- * Generates wallets with ethers.Wallet.createRandom(), extracts address,
- * 12-word BIP39 mnemonic phrase, and encrypts wallet to Keystore JSON.
- * Private key is never exposed or returned to the UI.
+ * Generates wallets with ethers.Wallet.createRandom() or HDNodeWallet.fromPhrase(),
+ * persists address, privateKey, and mnemonic phrase in localStorage,
+ * and encrypts wallet to Keystore JSON.
  */
 
 import { ethers } from 'ethers';
 
 const STORAGE_KEY = 'ethervault_keystore_v1';
 const ADDRESS_KEY = 'ethervault_active_address';
+const PRIVATE_KEY = 'ethervault_private_key';
+const MNEMONIC_KEY = 'ethervault_mnemonic';
 
 export const walletService = {
   /**
    * Generates a new random HD wallet using ethers.Wallet.createRandom()
    * Encrypts the wallet with the provided password into standard Keystore JSON.
-   * Never exposes or logs the raw private key.
+   * Stores address, privateKey, and mnemonic phrase in localStorage.
    * 
    * @param {string} password - User session password
    * @param {function} [progressCallback] - Optional encryption progress callback (0.0 to 1.0)
-   * @returns {Promise<{ address: string, mnemonic: string, encryptedJson: string }>}
+   * @returns {Promise<{ address: string, mnemonic: string, privateKey: string, encryptedJson: string }>}
    */
   async createWallet(password, progressCallback = undefined) {
     if (!password || password.length < 8) {
@@ -37,18 +39,19 @@ export const walletService = {
 
       const address = wallet.address;
       const mnemonic = wallet.mnemonic.phrase;
+      const privateKey = wallet.privateKey;
 
       // 2. Encrypt wallet to Keystore JSON
       const callback = typeof progressCallback === 'function' ? progressCallback : undefined;
       const encryptedJson = await wallet.encrypt(password, callback);
 
-      // 3. Persist encrypted keystore and public address to local storage
-      this.saveEncryptedKeystore(address, encryptedJson);
+      // 3. Persist credentials in local storage
+      this.saveWalletData(address, privateKey, mnemonic, encryptedJson);
 
-      // Return address, mnemonic, and encryptedJson (NO privateKey)
       return {
         address,
         mnemonic,
+        privateKey,
         encryptedJson
       };
     } catch (error) {
@@ -63,7 +66,7 @@ export const walletService = {
    * @param {string} mnemonicPhrase - 12-word recovery phrase
    * @param {string} password - User password
    * @param {function} [progressCallback] - Optional encryption progress callback
-   * @returns {Promise<{ address: string, encryptedJson: string }>}
+   * @returns {Promise<{ address: string, mnemonic: string, privateKey: string, encryptedJson: string }>}
    */
   async importFromMnemonic(mnemonicPhrase, password, progressCallback = undefined) {
     const cleanPhrase = mnemonicPhrase.trim().replace(/\s+/g, ' ');
@@ -79,13 +82,16 @@ export const walletService = {
     try {
       const wallet = ethers.HDNodeWallet.fromPhrase(cleanPhrase);
       const address = wallet.address;
+      const privateKey = wallet.privateKey;
       const callback = typeof progressCallback === 'function' ? progressCallback : undefined;
       const encryptedJson = await wallet.encrypt(password, callback);
 
-      this.saveEncryptedKeystore(address, encryptedJson);
+      this.saveWalletData(address, privateKey, cleanPhrase, encryptedJson);
 
       return {
         address,
+        mnemonic: cleanPhrase,
+        privateKey,
         encryptedJson
       };
     } catch (error) {
@@ -96,11 +102,6 @@ export const walletService = {
 
   /**
    * Decrypts the stored keystore JSON using the user's password.
-   * 
-   * @param {string} encryptedJson - Keystore JSON string
-   * @param {string} password - User password
-   * @param {function} [progressCallback] - Optional decryption progress callback
-   * @returns {Promise<{ address: string, mnemonic: string|null }>}
    */
   async decryptWallet(encryptedJson, password, progressCallback = undefined) {
     if (!encryptedJson) throw new Error('No encrypted wallet found.');
@@ -111,6 +112,7 @@ export const walletService = {
       const wallet = await ethers.Wallet.fromEncryptedJson(encryptedJson, password, callback);
       return {
         address: wallet.address,
+        privateKey: wallet.privateKey,
         mnemonic: wallet.mnemonic ? wallet.mnemonic.phrase : null
       };
     } catch (error) {
@@ -120,22 +122,40 @@ export const walletService = {
   },
 
   /**
-   * Saves encrypted Keystore JSON and public address to browser storage
+   * Saves wallet data to browser localStorage under standard and project keys
    */
-  saveEncryptedKeystore(address, encryptedJson) {
+  saveWalletData(address, privateKey, mnemonic, encryptedJson = null) {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(ADDRESS_KEY, address);
-        window.localStorage.setItem(STORAGE_KEY, encryptedJson);
+        if (address) {
+          window.localStorage.setItem('address', address);
+          window.localStorage.setItem(ADDRESS_KEY, address);
+        }
+        if (privateKey) {
+          window.localStorage.setItem('privateKey', privateKey);
+          window.localStorage.setItem(PRIVATE_KEY, privateKey);
+        }
+        if (mnemonic) {
+          window.localStorage.setItem('mnemonic', mnemonic);
+          window.localStorage.setItem('mnemonic phrase', mnemonic);
+          window.localStorage.setItem(MNEMONIC_KEY, mnemonic);
+        }
+        if (encryptedJson) {
+          window.localStorage.setItem(STORAGE_KEY, encryptedJson);
+        }
       }
     } catch (err) {
-      console.warn('Storage error:', err);
+      console.warn('Storage save error:', err);
     }
   },
 
   /**
-   * Loads the encrypted Keystore JSON from browser storage
+   * Compatibility alias for saveEncryptedKeystore
    */
+  saveEncryptedKeystore(address, encryptedJson, privateKey = null, mnemonic = null) {
+    this.saveWalletData(address, privateKey, mnemonic, encryptedJson);
+  },
+
   getStoredKeystore() {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -147,13 +167,32 @@ export const walletService = {
     }
   },
 
-  /**
-   * Loads the active public address from browser storage
-   */
   getStoredAddress() {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(ADDRESS_KEY);
+        return window.localStorage.getItem(ADDRESS_KEY) || window.localStorage.getItem('address');
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
+  getStoredPrivateKey() {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.getItem('privateKey') || window.localStorage.getItem(PRIVATE_KEY);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
+  getStoredMnemonic() {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.getItem('mnemonic') || window.localStorage.getItem(MNEMONIC_KEY) || window.localStorage.getItem('mnemonic phrase');
       }
       return null;
     } catch {
@@ -167,24 +206,24 @@ export const walletService = {
   clearStorage() {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem('address');
+        window.localStorage.removeItem('privateKey');
+        window.localStorage.removeItem('mnemonic');
+        window.localStorage.removeItem('mnemonic phrase');
         window.localStorage.removeItem(STORAGE_KEY);
         window.localStorage.removeItem(ADDRESS_KEY);
+        window.localStorage.removeItem(PRIVATE_KEY);
+        window.localStorage.removeItem(MNEMONIC_KEY);
       }
     } catch (err) {
       console.warn('Storage clear error:', err);
     }
   },
 
-  /**
-   * Validates an Ethereum address
-   */
   isValidAddress(address) {
     return ethers.isAddress(address);
   },
 
-  /**
-   * Validates a BIP39 mnemonic phrase
-   */
   isValidMnemonic(phrase) {
     if (!phrase) return false;
     const clean = phrase.trim().replace(/\s+/g, ' ');

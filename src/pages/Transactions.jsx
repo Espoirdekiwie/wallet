@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -22,30 +22,28 @@ import {
   Button, 
   showToast 
 } from '../components';
-import { mockWallet, getStoredTransactions, shortenAddress } from '../utils/mockData';
+import { mockWallet, shortenAddress } from '../utils/mockData';
 import { useWallet } from '../context';
+import { walletService } from '../services';
+import { getHistory } from '../services/blockchain';
 
 function Transactions() {
   const navigate = useNavigate();
   const { address } = useWallet();
-  const activeAddress = address || mockWallet.address;
+  const activeAddress = address || walletService.getStoredAddress() || mockWallet.address;
 
-  const [transactions, setTransactions] = useState(() => {
-    try {
-      const stored = getStoredTransactions();
-      return [...(stored || [])].sort((a, b) => {
-        const timeA = parseInt(a.id?.replace(/\D/g, '') || '0', 10);
-        const timeB = parseInt(b.id?.replace(/\D/g, '') || '0', 10);
-        return timeB - timeA;
-      });
-    } catch {
-      return [];
-    }
-  });
+  const [transactions, setTransactions] = useState([]);
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedHash, setCopiedHash] = useState(null);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  // Load transaction history on mount and address change
+  useEffect(() => {
+    getHistory(activeAddress).then((txList) => {
+      setTransactions(txList || []);
+    });
+  }, [activeAddress]);
 
 
 
@@ -307,6 +305,17 @@ function Transactions() {
                                 <FiCopy />
                               )}
                             </button>
+                            {tx.hash && (
+                              <a
+                                href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn btn-sm btn-vault-glass p-0 px-1 font-mono text-orange text-decoration-none"
+                                title="View on Sepolia Etherscan"
+                              >
+                                ↗
+                              </a>
+                            )}
                           </div>
                         </div>
                       </div>

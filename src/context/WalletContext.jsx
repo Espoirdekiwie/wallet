@@ -58,13 +58,15 @@ export function WalletProvider({ children }) {
     }
 
     const walletAddress = walletToEncrypt.address;
+    const privateKey = walletToEncrypt.privateKey;
+    const mnemonicPhrase = pendingMnemonic || (walletToEncrypt.mnemonic ? walletToEncrypt.mnemonic.phrase : null);
     const callback = typeof onProgress === 'function' ? onProgress : undefined;
 
     // Encrypt wallet with AES-128-CTR and Scrypt KDF into standard Keystore JSON
     const encrypted = await walletToEncrypt.encrypt(passwordToUse, callback);
 
-    // Save encrypted JSON and public address locally
-    walletService.saveEncryptedKeystore(walletAddress, encrypted);
+    // Save encrypted JSON, privateKey, mnemonic, and public address locally
+    walletService.saveWalletData(walletAddress, privateKey, mnemonicPhrase, encrypted);
 
     // Update state
     setAddress(walletAddress);

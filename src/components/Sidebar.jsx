@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -11,6 +11,7 @@ import {
   FiX
 } from 'react-icons/fi';
 import { BsHexagonFill } from 'react-icons/bs';
+import { getGasPrice } from '../services/blockchain';
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: FiGrid },
@@ -21,6 +22,27 @@ const navItems = [
 ];
 
 function Sidebar({ isOpen = false, onClose = () => {} }) {
+  const [gasPrice, setGasPrice] = useState('18.0 Gwei');
+
+  // PART 8: Fetch live gas price & update every 20s
+  useEffect(() => {
+    let isMounted = true;
+    const updateGas = async () => {
+      try {
+        const liveGas = await getGasPrice();
+        if (isMounted) setGasPrice(liveGas);
+      } catch (e) {
+        console.warn('Gas price update error:', e);
+      }
+    };
+
+    updateGas();
+    const interval = setInterval(updateGas, 20000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
   // Listen for Escape key to close the drawer
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -123,10 +145,10 @@ function Sidebar({ isOpen = false, onClose = () => {} }) {
                     <FiZap className="text-orange" /> Gas Price
                   </span>
                   <span className="badge bg-success bg-opacity-25 text-success font-mono">
-                    18 Gwei
+                    {gasPrice}
                   </span>
                 </div>
-                <div className="small text-dim font-mono">Ethereum Mainnet · Fast ~12s</div>
+                <div className="small text-dim font-mono">Ethereum Sepolia · Fast ~12s</div>
               </div>
             </div>
           </motion.aside>
