@@ -75,21 +75,17 @@ function RecoveryPhrase() {
     setTimeout(() => setDownloaded(false), 3000);
   };
 
-  // 3. Continue: Encrypt wallet, save encrypted JSON locally, and navigate to Dashboard
+  // 3. Continue: Encrypt wallet with AES, save ciphertext locally, and navigate to Dashboard
   const handleContinue = async () => {
     setEncrypting(true);
-    setEncryptionProgress('Encrypting wallet with AES-128-CTR and Scrypt KDF...');
+    setEncryptionProgress('Encrypting wallet with AES-256...');
 
     try {
-      // Calls finalizeAndSaveWallet: encrypts wallet to Keystore JSON,
-      // saves locally to localStorage, and purges plaintext private key and mnemonic.
-      await finalizeAndSaveWallet((progress) => {
-        if (progress < 1) {
-          setEncryptionProgress(`Encrypting Keystore JSON: ${Math.round(progress * 100)}%`);
-        }
-      });
+      // Calls finalizeAndSaveWallet: encrypts wallet with AES,
+      // saves ciphertext to localStorage, and keeps decrypted keys in memory only.
+      await finalizeAndSaveWallet();
 
-      showToast.success('Wallet encrypted and saved securely!');
+      showToast.success('Wallet encrypted with AES and active in session!');
       navigate('/dashboard');
     } catch (error) {
       console.error('Wallet encryption error:', error);

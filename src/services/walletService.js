@@ -1,36 +1,37 @@
 /**
  * walletService.js
  * 
- * Core cryptographic wallet management using ethers.js v6.
- * Generates wallets with ethers.Wallet.createRandom() or HDNodeWallet.fromPhrase(),
- * persists address, privateKey, and mnemonic phrase in localStorage,
- * and encrypts wallet to Keystore JSON.
+ * Cryptographic wallet generation and management using ethers.js v6
+ * and AES encryption via encryption.js.
+ * 
+ * Sensitive keys (privateKey, mnemonic) are encrypted before saving
+ * and never stored unencrypted in localStorage.
  */
 
 import { ethers } from 'ethers';
-
-const STORAGE_KEY = 'ethervault_keystore_v1';
-const ADDRESS_KEY = 'ethervault_active_address';
-const PRIVATE_KEY = 'ethervault_private_key';
-const MNEMONIC_KEY = 'ethervault_mnemonic';
+import { 
+  encryptWallet, 
+  decryptWallet, 
+  hasEncryptedWallet, 
+  clearEncryptedWallet,
+  ADDRESS_KEY 
+} from './encryption';
 
 export const walletService = {
   /**
-   * Generates a new random HD wallet using ethers.Wallet.createRandom()
-   * Encrypts the wallet with the provided password into standard Keystore JSON.
-   * Stores address, privateKey, and mnemonic phrase in localStorage.
+   * Generates a new random HD wallet using ethers.Wallet.createRandom().
+   * Encrypts the wallet payload with AES using the user password.
+   * Only the ciphertext is stored in localStorage under 'encryptedWallet'.
    * 
-   * @param {string} password - User session password
-   * @param {function} [progressCallback] - Optional encryption progress callback (0.0 to 1.0)
-   * @returns {Promise<{ address: string, mnemonic: string, privateKey: string, encryptedJson: string }>}
+   * @param {string} password - Master password (min 8 chars)
+   * @returns {Promise<{ address: string, mnemonic: string, privateKey: string, encryptedWallet: string }>}
    */
-  async createWallet(password, progressCallback = undefined) {
+  async createWallet(password) {
     if (!password || password.length < 8) {
       throw new Error('Password must be at least 8 characters long.');
     }
 
     try {
-      // 1. Generate random HD wallet
       const wallet = ethers.Wallet.createRandom();
 
       if (!wallet.mnemonic || !wallet.mnemonic.phrase) {
@@ -41,18 +42,14 @@ export const walletService = {
       const mnemonic = wallet.mnemonic.phrase;
       const privateKey = wallet.privateKey;
 
-      // 2. Encrypt wallet to Keystore JSON
-      const callback = typeof progressCallback === 'function' ? progressCallback : undefined;
-      const encryptedJson = await wallet.encrypt(password, callback);
-
-      // 3. Persist credentials in local storage
-      this.saveWalletData(address, privateKey, mnemonic, encryptedJson);
+      // Encrypt with AES and persist only the ciphertext
+      const encryptedWallet = encryptWallet({ address, privateKey, mnemonic }, password);
 
       return {
         address,
         mnemonic,
         privateKey,
-        encryptedJson
+        encryptedWallet
       };
     } catch (error) {
       console.error('Wallet creation error:', error);
@@ -64,11 +61,10 @@ export const walletService = {
    * Restores a wallet from a 12-word BIP39 mnemonic and encrypts with password.
    * 
    * @param {string} mnemonicPhrase - 12-word recovery phrase
-   * @param {string} password - User password
-   * @param {function} [progressCallback] - Optional encryption progress callback
-   * @returns {Promise<{ address: string, mnemonic: string, privateKey: string, encryptedJson: string }>}
+   * @param {string} password - Master password
+   * @returns {Promise<{ address: string, mnemonic: string, privateKey: string, encryptedWallet: string }>}
    */
-  async importFromMnemonic(mnemonicPhrase, password, progressCallback = undefined) {
+  async importFromMnemonic(mnemonicPhrase, password) {
     const cleanPhrase = mnemonicPhrase.trim().replace(/\s+/g, ' ');
 
     if (!ethers.Mnemonic.isValidMnemonic(cleanPhrase)) {
@@ -83,16 +79,14 @@ export const walletService = {
       const wallet = ethers.HDNodeWallet.fromPhrase(cleanPhrase);
       const address = wallet.address;
       const privateKey = wallet.privateKey;
-      const callback = typeof progressCallback === 'function' ? progressCallback : undefined;
-      const encryptedJson = await wallet.encrypt(password, callback);
 
-      this.saveWalletData(address, privateKey, cleanPhrase, encryptedJson);
+      const encryptedWallet = encryptWallet({ address, privateKey, mnemonic: cleanPhrase }, password);
 
       return {
         address,
         mnemonic: cleanPhrase,
         privateKey,
-        encryptedJson
+        encryptedWallet
       };
     } catch (error) {
       console.error('Wallet import error:', error);
@@ -101,72 +95,26 @@ export const walletService = {
   },
 
   /**
-   * Decrypts the stored keystore JSON using the user's password.
+   * Decrypts the stored AES encrypted wallet with user password.
+   * 
+   * @param {string|null} cipher - Ciphertext string or null to read from storage
+   * @param {string} password - Master password
+   * @returns {Promise<{ address: string, privateKey: string, mnemonic: string|null }>}
    */
-  async decryptWallet(encryptedJson, password, progressCallback = undefined) {
-    if (!encryptedJson) throw new Error('No encrypted wallet found.');
-    if (!password) throw new Error('Password is required to decrypt wallet.');
-
-    try {
-      const callback = typeof progressCallback === 'function' ? progressCallback : undefined;
-      const wallet = await ethers.Wallet.fromEncryptedJson(encryptedJson, password, callback);
-      return {
-        address: wallet.address,
-        privateKey: wallet.privateKey,
-        mnemonic: wallet.mnemonic ? wallet.mnemonic.phrase : null
-      };
-    } catch (error) {
-      console.error('Wallet decryption error:', error);
-      throw new Error('Incorrect password. Failed to decrypt wallet keystore.');
-    }
+  async decryptWallet(cipher, password) {
+    return decryptWallet(cipher, password);
   },
 
   /**
-   * Saves wallet data to browser localStorage under standard and project keys
+   * Checks if an encrypted wallet exists in storage
    */
-  saveWalletData(address, privateKey, mnemonic, encryptedJson = null) {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        if (address) {
-          window.localStorage.setItem('address', address);
-          window.localStorage.setItem(ADDRESS_KEY, address);
-        }
-        if (privateKey) {
-          window.localStorage.setItem('privateKey', privateKey);
-          window.localStorage.setItem(PRIVATE_KEY, privateKey);
-        }
-        if (mnemonic) {
-          window.localStorage.setItem('mnemonic', mnemonic);
-          window.localStorage.setItem('mnemonic phrase', mnemonic);
-          window.localStorage.setItem(MNEMONIC_KEY, mnemonic);
-        }
-        if (encryptedJson) {
-          window.localStorage.setItem(STORAGE_KEY, encryptedJson);
-        }
-      }
-    } catch (err) {
-      console.warn('Storage save error:', err);
-    }
+  hasStoredWallet() {
+    return hasEncryptedWallet();
   },
 
   /**
-   * Compatibility alias for saveEncryptedKeystore
+   * Gets public active address
    */
-  saveEncryptedKeystore(address, encryptedJson, privateKey = null, mnemonic = null) {
-    this.saveWalletData(address, privateKey, mnemonic, encryptedJson);
-  },
-
-  getStoredKeystore() {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(STORAGE_KEY);
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  },
-
   getStoredAddress() {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -178,46 +126,11 @@ export const walletService = {
     }
   },
 
-  getStoredPrivateKey() {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem('privateKey') || window.localStorage.getItem(PRIVATE_KEY);
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  },
-
-  getStoredMnemonic() {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem('mnemonic') || window.localStorage.getItem(MNEMONIC_KEY) || window.localStorage.getItem('mnemonic phrase');
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  },
-
   /**
-   * Clears stored wallet credentials
+   * Clears all stored wallet credentials
    */
   clearStorage() {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.removeItem('address');
-        window.localStorage.removeItem('privateKey');
-        window.localStorage.removeItem('mnemonic');
-        window.localStorage.removeItem('mnemonic phrase');
-        window.localStorage.removeItem(STORAGE_KEY);
-        window.localStorage.removeItem(ADDRESS_KEY);
-        window.localStorage.removeItem(PRIVATE_KEY);
-        window.localStorage.removeItem(MNEMONIC_KEY);
-      }
-    } catch (err) {
-      console.warn('Storage clear error:', err);
-    }
+    clearEncryptedWallet();
   },
 
   isValidAddress(address) {

@@ -1,26 +1,68 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 import walletService from '../services/walletService';
+import { changePassword, hasEncryptedWallet } from '../services/encryption';
 
 const WalletContext = createContext(null);
 
+const AUTO_LOCK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes of inactivity
+
 export function WalletProvider({ children }) {
   const [address, setAddress] = useState(() => walletService.getStoredAddress() || null);
-  const [pendingMnemonic, setPendingMnemonic] = useState(null);
-  const [encryptedJson, setEncryptedJson] = useState(() => walletService.getStoredKeystore() || null);
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [isInitialized, setIsInitialized] = useState(() => {
-    return Boolean(walletService.getStoredAddress() && walletService.getStoredKeystore());
-  });
+  
+  // SENSITIVE DECRYPTED CREDENTIALS (IN-MEMORY ONLY - NEVER STORED IN LOCALSTORAGE)
+  const [privateKey, setPrivateKey] = useState(null);
+  const [mnemonic, setMnemonic] = useState(null);
 
-  // Temporary in-memory state exclusively during onboarding (cleared immediately upon Continue)
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(() => hasEncryptedWallet());
+
+  // Temporary in-memory state during onboarding
   const [tempWallet, setTempWallet] = useState(null);
   const [tempPassword, setTempPassword] = useState(null);
-
+  const [pendingMnemonic, setPendingMnemonic] = useState(null);
 
   /**
-   * Step 1 (CreatePassword): Prepares random HD wallet and stores phrase
-   * for user to inspect on Recovery Phrase page.
+   * PART 6: Auto Lock after 5 minutes of user inactivity
+   */
+  const lockWallet = useCallback(() => {
+    setPrivateKey(null);
+    setMnemonic(null);
+    setTempWallet(null);
+    setTempPassword(null);
+    setPendingMnemonic(null);
+    setIsUnlocked(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isUnlocked) return;
+
+    let timer = null;
+
+    const handleUserActivity = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        lockWallet();
+      }, AUTO_LOCK_TIMEOUT_MS);
+    };
+
+    const activityEvents = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+    activityEvents.forEach((evt) => {
+      window.addEventListener(evt, handleUserActivity, { passive: true });
+    });
+
+    handleUserActivity();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      activityEvents.forEach((evt) => {
+        window.removeEventListener(evt, handleUserActivity);
+      });
+    };
+  }, [isUnlocked, lockWallet]);
+
+  /**
+   * Step 1 (CreatePassword): Prepares random HD wallet in memory
    */
   const prepareNewWallet = (password) => {
     if (!password || password.length < 8) {
@@ -29,25 +71,23 @@ export function WalletProvider({ children }) {
 
     const wallet = ethers.Wallet.createRandom();
     const walletAddress = wallet.address;
-    const mnemonic = wallet.mnemonic.phrase;
+    const mnemonicPhrase = wallet.mnemonic.phrase;
 
     setAddress(walletAddress);
-    setPendingMnemonic(mnemonic);
+    setPendingMnemonic(mnemonicPhrase);
     setTempWallet(wallet);
     setTempPassword(password);
 
-    return { address: walletAddress, mnemonic };
+    return { address: walletAddress, mnemonic: mnemonicPhrase };
   };
 
   /**
-   * Step 2 (RecoveryPhrase Continue): Encrypts the wallet into standard Keystore JSON,
-   * saves encrypted JSON locally, and purges plaintext mnemonic and private keys from memory.
+   * Step 2 (RecoveryPhrase Continue): Encrypts wallet with AES and saves ciphertext only
    */
-  const finalizeAndSaveWallet = async (onProgress = null) => {
+  const finalizeAndSaveWallet = async () => {
     let walletToEncrypt = tempWallet;
     let passwordToUse = tempPassword;
 
-    // Fallback if accessed directly without going through CreatePassword
     if (!walletToEncrypt) {
       if (pendingMnemonic) {
         walletToEncrypt = ethers.HDNodeWallet.fromPhrase(pendingMnemonic);
@@ -58,50 +98,48 @@ export function WalletProvider({ children }) {
     }
 
     const walletAddress = walletToEncrypt.address;
-    const privateKey = walletToEncrypt.privateKey;
+    const rawPrivateKey = walletToEncrypt.privateKey;
     const mnemonicPhrase = pendingMnemonic || (walletToEncrypt.mnemonic ? walletToEncrypt.mnemonic.phrase : null);
-    const callback = typeof onProgress === 'function' ? onProgress : undefined;
 
-    // Encrypt wallet with AES-128-CTR and Scrypt KDF into standard Keystore JSON
-    const encrypted = await walletToEncrypt.encrypt(passwordToUse, callback);
+    // Encrypt and persist ciphertext in localStorage
+    await walletService.createWallet(passwordToUse);
 
-    // Save encrypted JSON, privateKey, mnemonic, and public address locally
-    walletService.saveWalletData(walletAddress, privateKey, mnemonicPhrase, encrypted);
-
-    // Update state
+    // Keep decrypted keys strictly in-memory
     setAddress(walletAddress);
-    setEncryptedJson(encrypted);
+    setPrivateKey(rawPrivateKey);
+    setMnemonic(mnemonicPhrase);
     setIsInitialized(true);
     setIsUnlocked(true);
 
-    // Clean up temporary in-memory credentials immediately
+    // Clean up onboarding state
     setTempWallet(null);
     setTempPassword(null);
     setPendingMnemonic(null);
 
-    return { address: walletAddress, encryptedJson: encrypted };
+    return { address: walletAddress };
   };
 
   /**
-   * One-shot wallet creation + encryption
+   * One-shot wallet creation + AES encryption
    */
-  const createWallet = async (password, onProgress = null) => {
-    const result = await walletService.createWallet(password, onProgress);
+  const createWallet = async (password) => {
+    const result = await walletService.createWallet(password);
     setAddress(result.address);
-    setPendingMnemonic(result.mnemonic);
-    setEncryptedJson(result.encryptedJson);
+    setPrivateKey(result.privateKey);
+    setMnemonic(result.mnemonic);
     setIsInitialized(true);
     setIsUnlocked(true);
     return result;
   };
 
   /**
-   * Restores an existing wallet from a 12-word mnemonic
+   * Restores an existing wallet from a 12-word mnemonic & encrypts with AES
    */
-  const importWallet = async (mnemonic, password, onProgress = null) => {
-    const result = await walletService.importFromMnemonic(mnemonic, password, onProgress);
+  const importWallet = async (phrase, password) => {
+    const result = await walletService.importFromMnemonic(phrase, password);
     setAddress(result.address);
-    setEncryptedJson(result.encryptedJson);
+    setPrivateKey(result.privateKey);
+    setMnemonic(result.mnemonic);
     setPendingMnemonic(null);
     setIsInitialized(true);
     setIsUnlocked(true);
@@ -109,23 +147,25 @@ export function WalletProvider({ children }) {
   };
 
   /**
-   * Decrypts and unlocks existing stored wallet
+   * PART 4: Unlock wallet with user password (decrypts from AES storage to memory)
    */
-  const unlockWallet = async (password, onProgress = null) => {
-    if (!encryptedJson) throw new Error('No encrypted wallet found.');
-    const result = await walletService.decryptWallet(encryptedJson, password, onProgress);
+  const unlockWallet = async (password) => {
+    const decrypted = await walletService.decryptWallet(null, password);
+    setAddress(decrypted.address);
+    setPrivateKey(decrypted.privateKey);
+    setMnemonic(decrypted.mnemonic);
     setIsUnlocked(true);
-    return result;
+    return decrypted;
   };
 
   /**
-   * Locks wallet session
+   * PART 9: Change wallet password & re-encrypt
    */
-  const lockWallet = () => {
-    setIsUnlocked(false);
-    setTempWallet(null);
-    setTempPassword(null);
-    setPendingMnemonic(null);
+  const changeUserPassword = (oldPassword, newPassword) => {
+    const decrypted = changePassword(oldPassword, newPassword);
+    setPrivateKey(decrypted.privateKey);
+    setMnemonic(decrypted.mnemonic);
+    return decrypted;
   };
 
   /**
@@ -134,8 +174,9 @@ export function WalletProvider({ children }) {
   const resetWallet = () => {
     walletService.clearStorage();
     setAddress(null);
+    setPrivateKey(null);
+    setMnemonic(null);
     setPendingMnemonic(null);
-    setEncryptedJson(null);
     setTempWallet(null);
     setTempPassword(null);
     setIsUnlocked(false);
@@ -144,8 +185,9 @@ export function WalletProvider({ children }) {
 
   const value = {
     address,
+    privateKey,
+    mnemonic,
     pendingMnemonic,
-    encryptedJson,
     isUnlocked,
     isInitialized,
     prepareNewWallet,
@@ -154,6 +196,7 @@ export function WalletProvider({ children }) {
     importWallet,
     unlockWallet,
     lockWallet,
+    changeUserPassword,
     resetWallet
   };
 

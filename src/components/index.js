@@ -7,4 +7,5 @@ export { default as Sidebar } from './Sidebar';
 export { default as Loading } from './Loading';
 export { default as QRModal } from './QRModal';
 export { default as NetworkModal } from './NetworkModal';
+export { default as LockScreen } from './LockScreen';
 export { default as showToast } from './Toast';

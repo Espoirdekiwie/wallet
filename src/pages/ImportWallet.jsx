@@ -92,17 +92,13 @@ function ImportWallet() {
     }
 
     setLoading(true);
-    setEncryptionProgress('Validating recovery phrase and generating Keystore JSON...');
+    setEncryptionProgress('Validating recovery phrase and encrypting wallet with AES...');
 
     try {
-      // 3. Encrypt wallet with password and save encrypted Keystore JSON locally
-      await importWallet(cleanPhrase, password, (progress) => {
-        if (progress < 1) {
-          setEncryptionProgress(`Encrypting Keystore JSON: ${Math.round(progress * 100)}%`);
-        }
-      });
+      // 3. Encrypt wallet with password and save AES ciphertext locally
+      await importWallet(cleanPhrase, password);
 
-      showToast.success('Wallet restored, encrypted, and saved locally!');
+      showToast.success('Wallet restored, encrypted with AES, and loaded into session!');
       navigate('/dashboard');
     } catch (error) {
       console.error('Wallet import error:', error);

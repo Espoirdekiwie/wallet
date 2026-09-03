@@ -20,6 +20,7 @@ import {
   Navbar, 
   Sidebar, 
   Button, 
+  LockScreen,
   showToast 
 } from '../components';
 import { mockWallet, shortenAddress } from '../utils/mockData';
@@ -29,7 +30,7 @@ import { getHistory } from '../services/blockchain';
 
 function Transactions() {
   const navigate = useNavigate();
-  const { address } = useWallet();
+  const { address, isUnlocked, isInitialized } = useWallet();
   const activeAddress = address || walletService.getStoredAddress() || mockWallet.address;
 
   const [transactions, setTransactions] = useState([]);
@@ -112,6 +113,11 @@ function Transactions() {
 
     return true;
   });
+
+  // If local wallet exists but session is locked, show LockScreen
+  if (isInitialized && !isUnlocked) {
+    return <LockScreen />;
+  }
 
   return (
     <>

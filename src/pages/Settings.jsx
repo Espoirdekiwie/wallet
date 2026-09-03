@@ -13,7 +13,8 @@ import {
   FiX,
   FiCopy,
   FiMoon,
-  FiSun
+  FiSun,
+  FiUnlock
 } from 'react-icons/fi';
 import { FaEthereum } from 'react-icons/fa';
 import { BsHexagonFill, BsShieldCheck } from 'react-icons/bs';
@@ -25,27 +26,39 @@ import {
   Button, 
   Input, 
   NetworkModal,
+  LockScreen,
   showToast 
 } from '../components';
 import { mockWallet } from '../utils/mockData';
 import { useWallet, useTheme } from '../context';
+import { decryptWallet } from '../services/encryption';
 
 function Settings() {
   const navigate = useNavigate();
-  const { address, resetWallet } = useWallet();
+  const { address, isUnlocked, isInitialized, resetWallet, changeUserPassword } = useWallet();
   const { isDarkMode, toggleTheme } = useTheme();
   const activeAddress = address || mockWallet.address;
 
-  const [selectedNetwork, setSelectedNetwork] = useState('mainnet');
+  const [selectedNetwork, setSelectedNetwork] = useState('sepolia');
   const [isNetworkModalOpen, setIsNetworkModalOpen] = useState(false);
   const [isRevealPhraseOpen, setIsRevealPhraseOpen] = useState(false);
   const [isExportKeyOpen, setIsExportKeyOpen] = useState(false);
   const [isClearWalletModalOpen, setIsClearWalletModalOpen] = useState(false);
+  
+  // Decryption credentials state
   const [authPassword, setAuthPassword] = useState('');
-  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [decryptedData, setDecryptedData] = useState(null);
   const [copiedPhrase, setCopiedPhrase] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  // Change password form state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   // Handle Theme Toggle
   const handleToggleTheme = () => {
@@ -53,26 +66,75 @@ function Settings() {
     showToast.info(!isDarkMode ? 'Dark Mode enabled' : 'Cyber Light Mode enabled');
   };
 
-  // Unlock credentials check
-  const handleUnlockKeys = (e) => {
+  // PART 9: Change Password & Re-encrypt Wallet
+  const handleChangePasswordSubmit = (e) => {
     e.preventDefault();
-    if (authPassword.length < 8) {
-      showToast.error('Password must be at least 8 characters.');
+    setPasswordError('');
+
+    if (!currentPassword) {
+      setPasswordError('Current password is required.');
       return;
     }
-    setIsUnlocked(true);
-    showToast.success('Credentials decrypted.');
+    if (newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters long.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match.');
+      return;
+    }
+
+    setPasswordLoading(true);
+
+    try {
+      changeUserPassword(currentPassword, newPassword);
+      showToast.success('Password updated & wallet re-encrypted successfully!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordError('');
+    } catch (err) {
+      console.warn('Password change error:', err.message);
+      setPasswordError('Wrong current password. Re-encryption failed.');
+      showToast.error('Wrong current password.');
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  // PART 10: Unlock credentials check (Reveal Phrase / Export Private Key)
+  const handleUnlockKeys = (e) => {
+    e.preventDefault();
+    setAuthError('');
+
+    if (!authPassword) {
+      setAuthError('Password is required.');
+      return;
+    }
+
+    try {
+      const decrypted = decryptWallet(null, authPassword);
+      setDecryptedData(decrypted);
+      setAuthError('');
+      showToast.success('Credentials decrypted successfully.');
+    } catch (err) {
+      console.warn('Decryption error:', err.message);
+      setAuthError('Wrong Password');
+      showToast.error('Wrong Password. Please try again.');
+    }
   };
 
   const handleCopyPhrase = () => {
-    navigator.clipboard.writeText(mockWallet.mnemonic);
+    const phrase = decryptedData?.mnemonic || mockWallet.mnemonic;
+    navigator.clipboard.writeText(phrase);
     setCopiedPhrase(true);
     showToast.success('Recovery phrase copied!');
     setTimeout(() => setCopiedPhrase(false), 2000);
   };
 
   const handleCopyKey = () => {
-    navigator.clipboard.writeText('0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f360f21');
+    const key = decryptedData?.privateKey || '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f360f21';
+    navigator.clipboard.writeText(key);
     setCopiedKey(true);
     showToast.success('Private key copied!');
     setTimeout(() => setCopiedKey(false), 2000);
@@ -80,25 +142,15 @@ function Settings() {
 
   // Clear Wallet Data & Return Home
   const handleConfirmClearWallet = () => {
-    // 1. Reset in-memory wallet state and clear encrypted keystore
     resetWallet();
-    
-    // 2. Remove cached transactions and local state
     try {
       localStorage.removeItem('ethervault_transactions_v1');
       localStorage.removeItem('ethervault_active_address');
-      localStorage.removeItem('ethervault_keystore_v1');
     } catch (e) {
       console.warn('Error clearing local storage items:', e);
     }
-    
-    // 3. Close modal dialog
     setIsClearWalletModalOpen(false);
-
-    // 4. Show confirmation notification
     showToast.info('Local wallet data deleted successfully.');
-
-    // 5. Return to Home page
     navigate('/');
   };
 
@@ -114,6 +166,11 @@ function Settings() {
     hidden: { opacity: 0, y: 15 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.4, 0, 0.2, 1] } }
   };
+
+  // If local wallet exists but session is locked, show LockScreen
+  if (isInitialized && !isUnlocked) {
+    return <LockScreen />;
+  }
 
   return (
     <>
@@ -146,7 +203,7 @@ function Settings() {
                       <FiSettings className="text-orange me-2" /> Settings & <span className="text-gradient">Security</span>
                     </h2>
                     <p className="text-muted small mb-0 mt-1">
-                      Manage appearance theme, security credentials, and wallet lifecycle
+                      Manage wallet encryption, appearance, network preferences, and security credentials.
                     </p>
                   </div>
                   <div className="version-pill">
@@ -211,7 +268,81 @@ function Settings() {
                 </Card>
               </motion.div>
 
-              {/* 2. Blockchain Network Settings */}
+              {/* 2. Change Password & Re-Encrypt Wallet */}
+              <motion.div variants={itemVariants}>
+                <Card className="mb-4">
+                  <div className="settings-section-title text-white">
+                    <FiLock className="text-orange fs-5" /> Change Password
+                  </div>
+                  <p className="text-muted small mb-3">
+                    Verify your current password and re-encrypt your wallet with a new master password.
+                  </p>
+
+                  {passwordError && (
+                    <div className="alert alert-danger p-3 mb-3 rounded-3 d-flex align-items-center gap-2 font-mono small" style={{ background: 'rgba(244, 63, 94, 0.15)', border: '1px solid rgba(244, 63, 94, 0.4)', color: '#F43F5E' }}>
+                      <FiAlertTriangle className="fs-5 flex-shrink-0" />
+                      <span>{passwordError}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleChangePasswordSubmit}>
+                    <div className="row g-3 mb-3">
+                      <div className="col-md-4 col-12">
+                        <Input
+                          label="Current Password"
+                          type="password"
+                          placeholder="Current password"
+                          value={currentPassword}
+                          onChange={(e) => {
+                            setCurrentPassword(e.target.value);
+                            if (passwordError) setPasswordError('');
+                          }}
+                          required
+                        />
+                      </div>
+                      <div className="col-md-4 col-12">
+                        <Input
+                          label="New Password"
+                          type="password"
+                          placeholder="Min 8 characters"
+                          value={newPassword}
+                          onChange={(e) => {
+                            setNewPassword(e.target.value);
+                            if (passwordError) setPasswordError('');
+                          }}
+                          required
+                        />
+                      </div>
+                      <div className="col-md-4 col-12">
+                        <Input
+                          label="Confirm New Password"
+                          type="password"
+                          placeholder="Re-enter new password"
+                          value={confirmPassword}
+                          onChange={(e) => {
+                            setConfirmPassword(e.target.value);
+                            if (passwordError) setPasswordError('');
+                          }}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      size="md"
+                      loading={passwordLoading}
+                      disabled={passwordLoading || !currentPassword || !newPassword || !confirmPassword}
+                      icon={<FiLock className="fs-5" />}
+                    >
+                      {passwordLoading ? 'Re-encrypting Wallet...' : 'Update Password & Re-Encrypt'}
+                    </Button>
+                  </form>
+                </Card>
+              </motion.div>
+
+              {/* 3. Blockchain Network Settings */}
               <motion.div variants={itemVariants}>
                 <Card className="mb-4">
                   <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
@@ -234,19 +365,19 @@ function Settings() {
                       </div>
                       <div>
                         <div className="fw-bold text-white">
-                          {selectedNetwork === 'mainnet' ? 'Ethereum Mainnet' : selectedNetwork}
+                          Ethereum Sepolia Testnet
                         </div>
-                        <div className="small text-dim font-mono">Chain ID: 1 · EVM Layer 1</div>
+                        <div className="small text-dim font-mono">Chain ID: 11155111 · RPC Connected</div>
                       </div>
                     </div>
                     <span className="badge bg-success bg-opacity-25 text-success font-mono">
-                      <span className="status-dot-pulse me-1" style={{ width: '6px', height: '6px' }}></span> Connected
+                      <span className="status-dot-pulse me-1" style={{ width: '6px', height: '6px' }}></span> Active
                     </span>
                   </div>
                 </Card>
               </motion.div>
 
-              {/* 3. Security & Key Credentials */}
+              {/* 4. Security & Key Credentials (Export Phrase & Private Key) */}
               <motion.div variants={itemVariants}>
                 <Card className="mb-4">
                   <div className="settings-section-title text-white">
@@ -266,8 +397,9 @@ function Settings() {
                         variant="glass"
                         size="sm"
                         onClick={() => {
-                          setIsUnlocked(false);
+                          setDecryptedData(null);
                           setAuthPassword('');
+                          setAuthError('');
                           setIsRevealPhraseOpen(true);
                         }}
                         icon={<FiKey className="text-purple" />}
@@ -285,8 +417,9 @@ function Settings() {
                         variant="glass"
                         size="sm"
                         onClick={() => {
-                          setIsUnlocked(false);
+                          setDecryptedData(null);
                           setAuthPassword('');
+                          setAuthError('');
                           setIsExportKeyOpen(true);
                         }}
                         icon={<FiLock className="text-orange" />}
@@ -298,7 +431,7 @@ function Settings() {
                 </Card>
               </motion.div>
 
-              {/* 4. About EtherVault & Version 1.0 */}
+              {/* 5. About EtherVault & Version 1.0 */}
               <motion.div variants={itemVariants}>
                 <Card className="mb-4">
                   <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
@@ -321,7 +454,7 @@ function Settings() {
                   </div>
 
                   <p className="text-muted small mb-3" style={{ lineHeight: '1.7' }}>
-                    EtherVault is a modern, client-side encrypted cryptocurrency wallet engineered with React, Ethers.js v6, and Framer Motion. Your cryptographic keys never touch external servers and are secured locally with AES-128-CTR and Scrypt KDF password-derived keystores.
+                    EtherVault is a modern, client-side encrypted cryptocurrency wallet engineered with React, Ethers.js v6, crypto-js AES encryption, and Framer Motion. Your cryptographic keys never touch external servers and are stored strictly in AES-encrypted format.
                   </p>
 
                   <div className="glass-panel p-3">
@@ -339,15 +472,15 @@ function Settings() {
                         <span className="text-purple-light fw-bold">Ethers.js v6 · BIP39</span>
                       </div>
                       <div className="col-sm-6 col-12 d-flex justify-content-between align-items-center">
-                        <span className="text-muted">Keystore Standard:</span>
-                        <span className="text-success fw-bold">AES-128-CTR / Scrypt</span>
+                        <span className="text-muted">Storage Encryption:</span>
+                        <span className="text-success fw-bold">AES-256 (CryptoJS)</span>
                       </div>
                     </div>
                   </div>
                 </Card>
               </motion.div>
 
-              {/* 5. Danger Zone: Clear Wallet Data */}
+              {/* 6. Danger Zone: Clear Wallet Data */}
               <motion.div variants={itemVariants}>
                 <Card className="danger-zone-card">
                   <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
@@ -430,7 +563,7 @@ function Settings() {
         </div>
       )}
 
-      {/* Reveal Phrase Modal */}
+      {/* Reveal Phrase Modal (PART 10) */}
       {isRevealPhraseOpen && (
         <div className="modal show d-block" tabIndex="-1" style={{ zIndex: 1065 }}>
           <div className="modal-dialog modal-dialog-centered">
@@ -449,37 +582,53 @@ function Settings() {
                 </button>
               </div>
               <div className="modal-body p-4">
-                {!isUnlocked ? (
+                {/* Warning Banner */}
+                <div className="alert alert-danger small mb-3 rounded-3 d-flex align-items-center gap-2" style={{ background: 'rgba(244, 63, 94, 0.15)', border: '1px solid rgba(244, 63, 94, 0.3)', color: '#F43F5E' }}>
+                  <FiAlertTriangle className="fs-4 flex-shrink-0" />
+                  <span><strong>Warning:</strong> Never share this information. Anyone with this phrase can steal your funds.</span>
+                </div>
+
+                {!decryptedData ? (
                   <form onSubmit={handleUnlockKeys}>
-                    <div className="alert alert-danger small mb-3">
-                      <FiAlertTriangle className="me-1" />
-                      Ensure no one is looking at your screen before proceeding.
+                    {authError && (
+                      <div className="small text-danger font-mono mb-2">
+                        <FiAlertTriangle className="me-1" /> {authError}
+                      </div>
+                    )}
+                    <div className="mb-3">
+                      <Input
+                        label="Master Password"
+                        type="password"
+                        placeholder="Enter master password"
+                        value={authPassword}
+                        onChange={(e) => {
+                          setAuthPassword(e.target.value);
+                          if (authError) setAuthError('');
+                        }}
+                        icon={<FiLock className="text-purple" />}
+                        required
+                        autoFocus
+                      />
                     </div>
-                    <Input
-                      label="Confirm Password"
-                      type="password"
-                      placeholder="Enter session password"
-                      value={authPassword}
-                      onChange={(e) => setAuthPassword(e.target.value)}
-                      required
-                    />
-                    <Button type="submit" variant="primary" className="w-100">
+                    <Button type="submit" variant="primary" className="w-100" icon={<FiUnlock />}>
                       Decrypt Recovery Phrase
                     </Button>
                   </form>
                 ) : (
                   <div>
                     <div className="p-3 rounded-3 font-mono text-purple small text-break mb-3 bg-dark bg-opacity-75 border border-purple">
-                      {mockWallet.mnemonic}
+                      {decryptedData.mnemonic || 'No mnemonic phrase stored with this account.'}
                     </div>
-                    <Button
-                      variant="outline-purple"
-                      className="w-100 font-mono"
-                      onClick={handleCopyPhrase}
-                      icon={copiedPhrase ? <FiCheck className="text-success" /> : <FiCopy />}
-                    >
-                      {copiedPhrase ? 'Copied to Clipboard!' : 'Copy 12 Words'}
-                    </Button>
+                    {decryptedData.mnemonic && (
+                      <Button
+                        variant="outline-purple"
+                        className="w-100 font-mono"
+                        onClick={handleCopyPhrase}
+                        icon={copiedPhrase ? <FiCheck className="text-success" /> : <FiCopy />}
+                      >
+                        {copiedPhrase ? 'Copied to Clipboard!' : 'Copy 12 Words'}
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -489,7 +638,7 @@ function Settings() {
         </div>
       )}
 
-      {/* Export Private Key Modal */}
+      {/* Export Private Key Modal (PART 10) */}
       {isExportKeyOpen && (
         <div className="modal show d-block" tabIndex="-1" style={{ zIndex: 1065 }}>
           <div className="modal-dialog modal-dialog-centered">
@@ -508,28 +657,42 @@ function Settings() {
                 </button>
               </div>
               <div className="modal-body p-4">
-                {!isUnlocked ? (
+                {/* Warning Banner */}
+                <div className="alert alert-danger small mb-3 rounded-3 d-flex align-items-center gap-2" style={{ background: 'rgba(244, 63, 94, 0.15)', border: '1px solid rgba(244, 63, 94, 0.3)', color: '#F43F5E' }}>
+                  <FiAlertTriangle className="fs-4 flex-shrink-0" />
+                  <span><strong>Warning:</strong> Never share this information. Anyone with this key has full control over your assets.</span>
+                </div>
+
+                {!decryptedData ? (
                   <form onSubmit={handleUnlockKeys}>
-                    <div className="alert alert-danger small mb-3">
-                      <FiAlertTriangle className="me-1" />
-                      Never disclose your private key. Anyone with this key has full control.
+                    {authError && (
+                      <div className="small text-danger font-mono mb-2">
+                        <FiAlertTriangle className="me-1" /> {authError}
+                      </div>
+                    )}
+                    <div className="mb-3">
+                      <Input
+                        label="Master Password"
+                        type="password"
+                        placeholder="Enter master password"
+                        value={authPassword}
+                        onChange={(e) => {
+                          setAuthPassword(e.target.value);
+                          if (authError) setAuthError('');
+                        }}
+                        icon={<FiLock className="text-orange" />}
+                        required
+                        autoFocus
+                      />
                     </div>
-                    <Input
-                      label="Confirm Password"
-                      type="password"
-                      placeholder="Enter session password"
-                      value={authPassword}
-                      onChange={(e) => setAuthPassword(e.target.value)}
-                      required
-                    />
-                    <Button type="submit" variant="primary" className="w-100">
+                    <Button type="submit" variant="primary" className="w-100" icon={<FiUnlock />}>
                       Decrypt Private Key
                     </Button>
                   </form>
                 ) : (
                   <div>
                     <div className="p-3 rounded-3 font-mono text-danger small text-break mb-3 bg-dark bg-opacity-75 border border-danger">
-                      0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f360f21
+                      {decryptedData.privateKey}
                     </div>
                     <Button
                       variant="outline-orange"

@@ -25,6 +25,7 @@ import {
   WalletCard, 
   QRModal, 
   NetworkModal, 
+  LockScreen,
   Button, 
   showToast 
 } from '../components';
@@ -34,7 +35,7 @@ import { getBalance, getNetwork } from '../services/blockchain';
 
 function Dashboard() {
   const navigate = useNavigate();
-  const { address, lockWallet } = useWallet();
+  const { address, isUnlocked, isInitialized, lockWallet } = useWallet();
   const activeAddress = address || mockWallet.address;
   const recentTransactions = getStoredTransactions().slice(0, 2);
 
@@ -50,7 +51,6 @@ function Dashboard() {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
   const [isNetworkOpen, setIsNetworkOpen] = useState(false);
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [selectedNetwork, setSelectedNetwork] = useState('sepolia');
 
@@ -129,6 +129,10 @@ function Dashboard() {
     navigate('/');
   };
 
+  // PART 8: If local wallet exists but session is locked, show LockScreen
+  if (isInitialized && !isUnlocked) {
+    return <LockScreen />;
+  }
 
   return (
     <>

@@ -17,6 +17,7 @@ import {
   Card, 
   Button, 
   Input, 
+  LockScreen,
   showToast 
 } from '../components';
 import { mockWallet, saveTransaction } from '../utils/mockData';
@@ -26,7 +27,7 @@ import { sendTransaction, getBalance } from '../services/blockchain';
 
 function Send() {
   const navigate = useNavigate();
-  const { address } = useWallet();
+  const { address, privateKey: memoryPrivateKey, isUnlocked, isInitialized } = useWallet();
   const activeAddress = address || walletService.getStoredAddress() || mockWallet.address;
 
   const [recipient, setRecipient] = useState('');
@@ -98,10 +99,10 @@ function Send() {
     e.preventDefault();
     if (!validateForm()) return;
 
-    // Retrieve active private key from local storage
-    const privateKey = walletService.getStoredPrivateKey();
-    if (!privateKey) {
-      showToast.error('No private key available to sign transaction. Please import or create a wallet.');
+    // Retrieve active private key strictly from in-memory context state
+    const signingKey = memoryPrivateKey;
+    if (!signingKey) {
+      showToast.error('Wallet is locked. Please unlock your wallet to sign this transaction.');
       return;
     }
 
@@ -110,8 +111,8 @@ function Send() {
     try {
       showToast.info('Broadcasting transaction to Sepolia Testnet...');
       
-      // PART 5: Broadcast real transaction to Sepolia
-      const result = await sendTransaction(privateKey, recipient.trim(), amount);
+      // PART 5: Broadcast real transaction to Sepolia using in-memory key
+      const result = await sendTransaction(signingKey, recipient.trim(), amount);
 
       const newTx = {
         id: `tx-${Date.now()}`,
@@ -144,6 +145,11 @@ function Send() {
       setLoading(false);
     }
   };
+
+  // PART 8: If local wallet exists but session is locked, show LockScreen
+  if (isInitialized && !isUnlocked) {
+    return <LockScreen />;
+  }
 
   return (
     <>

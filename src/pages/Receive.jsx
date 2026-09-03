@@ -17,6 +17,7 @@ import {
   Card, 
   Button, 
   Input, 
+  LockScreen,
   showToast 
 } from '../components';
 import { mockWallet } from '../utils/mockData';
@@ -25,7 +26,7 @@ import { walletService } from '../services';
 
 function Receive() {
   const navigate = useNavigate();
-  const { address } = useWallet();
+  const { address, isUnlocked, isInitialized } = useWallet();
   const activeAddress = address || walletService.getStoredAddress() || mockWallet.address;
 
   const [amount, setAmount] = useState('');
@@ -59,6 +60,11 @@ function Receive() {
       handleCopy();
     }
   };
+
+  // If local wallet exists but session is locked, show LockScreen
+  if (isInitialized && !isUnlocked) {
+    return <LockScreen />;
+  }
 
   return (
     <>
