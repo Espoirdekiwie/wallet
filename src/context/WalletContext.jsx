@@ -20,6 +20,7 @@ export function WalletProvider({ children }) {
   const [tempWallet, setTempWallet] = useState(null);
   const [tempPassword, setTempPassword] = useState(null);
   const [pendingMnemonic, setPendingMnemonic] = useState(null);
+  const [pendingPrivateKey, setPendingPrivateKey] = useState(null);
 
   /**
    * Auto Lock after 5 minutes of user inactivity
@@ -30,6 +31,7 @@ export function WalletProvider({ children }) {
     setTempWallet(null);
     setTempPassword(null);
     setPendingMnemonic(null);
+    setPendingPrivateKey(null);
     setIsUnlocked(false);
   }, []);
 
@@ -71,13 +73,15 @@ export function WalletProvider({ children }) {
     const wallet = ethers.Wallet.createRandom();
     const walletAddress = wallet.address;
     const mnemonicPhrase = wallet.mnemonic.phrase;
+    const rawPrivateKey = wallet.privateKey;
 
     setAddress(walletAddress);
     setPendingMnemonic(mnemonicPhrase);
+    setPendingPrivateKey(rawPrivateKey);
     setTempWallet(wallet);
     setTempPassword(password);
 
-    return { address: walletAddress, mnemonic: mnemonicPhrase };
+    return { address: walletAddress, mnemonic: mnemonicPhrase, privateKey: rawPrivateKey };
   };
 
   /**
@@ -121,10 +125,11 @@ export function WalletProvider({ children }) {
     setIsInitialized(true);
     setIsUnlocked(true);
 
-    // Clean up onboarding state
+    // Clean up onboarding state - never show secrets again
     setTempWallet(null);
     setTempPassword(null);
     setPendingMnemonic(null);
+    setPendingPrivateKey(null);
 
     return { address: walletAddress };
   };
@@ -195,6 +200,7 @@ export function WalletProvider({ children }) {
     setPrivateKey(null);
     setMnemonic(null);
     setPendingMnemonic(null);
+    setPendingPrivateKey(null);
     setTempWallet(null);
     setTempPassword(null);
     setIsUnlocked(false);
@@ -210,6 +216,7 @@ export function WalletProvider({ children }) {
     privateKey,
     mnemonic,
     pendingMnemonic,
+    pendingPrivateKey,
     isUnlocked,
     isInitialized,
     prepareNewWallet,

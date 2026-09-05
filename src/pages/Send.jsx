@@ -7,7 +7,10 @@ import {
   FiUser, 
   FiCheckCircle, 
   FiArrowLeft,
-  FiCheck
+  FiCheck,
+  FiCopy,
+  FiExternalLink,
+  FiLock
 } from 'react-icons/fi';
 import { FaEthereum } from 'react-icons/fa';
 
@@ -32,8 +35,10 @@ function Send() {
 
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
+  const [password, setPassword] = useState('');
   const [recipientError, setRecipientError] = useState(null);
   const [amountError, setAmountError] = useState(null);
+  const [passwordError, setPasswordError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [txDetails, setTxDetails] = useState(null);
@@ -73,6 +78,7 @@ function Send() {
     let isValid = true;
     setRecipientError(null);
     setAmountError(null);
+    setPasswordError(null);
 
     const cleanRecipient = recipient.trim();
 
@@ -90,6 +96,15 @@ function Send() {
     if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
       setAmountError('Please enter a valid amount greater than 0 ETH.');
       isValid = false;
+    } else if (parseFloat(availableBalance) > 0 && parsedAmount > parseFloat(availableBalance)) {
+      setAmountError(`Insufficient balance. You have ${availableBalance} ETH.`);
+      isValid = false;
+    }
+
+    // 3. Validate Password if required
+    if (!password) {
+      setPasswordError('Please enter your password to authorize this transaction.');
+      isValid = false;
     }
 
     return isValid;
@@ -99,19 +114,32 @@ function Send() {
     e.preventDefault();
     if (!validateForm()) return;
 
-    // Retrieve active private key strictly from in-memory context state
-    const signingKey = memoryPrivateKey;
-    if (!signingKey) {
-      showToast.error('Wallet is locked. Please unlock your wallet to sign this transaction.');
-      return;
-    }
-
     setLoading(true);
 
     try {
+      // 1. Decrypt wallet with password to authorize
+      let signingKey = memoryPrivateKey;
+      if (password) {
+        try {
+          const decrypted = await walletService.decryptWallet(password);
+          signingKey = decrypted.privateKey;
+        } catch (decryptErr) {
+          setPasswordError('Wrong Password. Decryption failed.');
+          showToast.error('Wrong password. Transaction authorization rejected.');
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (!signingKey) {
+        showToast.error('Wallet is locked. Please enter your correct password.');
+        setLoading(false);
+        return;
+      }
+
       showToast.info('Broadcasting transaction to Sepolia Testnet...');
       
-      // PART 5: Broadcast real transaction to Sepolia using in-memory key
+      // 2. Broadcast real transaction to Sepolia using decrypted key
       const result = await sendTransaction(signingKey, recipient.trim(), amount);
 
       const newTx = {
@@ -213,16 +241,33 @@ function Send() {
                         <span className="text-muted">Gas Used:</span>
                         <span className="text-white">{txDetails?.gasUsed || '21000'} units</span>
                       </div>
-                      <div className="d-flex justify-content-between align-items-center">
+                      <div className="d-flex justify-content-between align-items-center mb-1">
                         <span className="text-muted">Tx Hash:</span>
+                        <span className="text-orange fw-bold font-mono">
+                          {txDetails?.hash ? `${txDetails.hash.slice(0, 10)}...${txDetails.hash.slice(-8)}` : 'N/A'}
+                        </span>
+                      </div>
+                      <div className="d-flex gap-2 mt-2 pt-2 border-top border-white border-opacity-10">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (txDetails?.hash) {
+                              navigator.clipboard.writeText(txDetails.hash);
+                              showToast.success('Transaction hash copied!');
+                            }
+                          }}
+                          className="btn btn-sm btn-vault-glass flex-fill d-flex align-items-center justify-content-center gap-1 font-mono text-white"
+                        >
+                          <FiCopy className="text-orange" /> Copy Hash
+                        </button>
                         <a
                           href={`https://sepolia.etherscan.io/tx/${txDetails?.hash}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-orange text-decoration-none fw-bold"
+                          className="btn btn-sm btn-vault-glass flex-fill d-flex align-items-center justify-content-center gap-1 font-mono text-orange text-decoration-none"
                           title="View on Sepolia Etherscan"
                         >
-                          {txDetails?.hash ? `${txDetails.hash.slice(0, 10)}...${txDetails.hash.slice(-8)}` : 'N/A'} ↗
+                          <FiExternalLink /> View on Etherscan
                         </a>
                       </div>
                     </div>
@@ -299,6 +344,25 @@ function Send() {
                     mono
                     icon={<FaEthereum className="text-purple" />}
                     helperText={amount && numAmount > 0 ? `≈ $${usdEquivalent} USD` : 'Enter transfer amount in Sepolia ETH'}
+                    disabled={loading || isSuccess}
+                    required
+                  />
+                </div>
+
+                {/* Field 3: Password Authorization */}
+                <div className="mb-4">
+                  <Input
+                    label="Wallet Password"
+                    type="password"
+                    placeholder="Enter password to authorize transfer"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (passwordError) setPasswordError(null);
+                    }}
+                    error={passwordError}
+                    icon={<FiLock className="text-warning" />}
+                    helperText="Required to decrypt keystore and sign on-chain transaction"
                     disabled={loading || isSuccess}
                     required
                   />

@@ -9,12 +9,14 @@ import {
   FiGlobe, 
   FiTrash2, 
   FiCheck, 
-  FiAlertTriangle,
-  FiX,
-  FiCopy,
-  FiMoon,
-  FiSun,
-  FiUnlock
+  FiAlertTriangle, 
+  FiX, 
+  FiCopy, 
+  FiMoon, 
+  FiSun, 
+  FiUnlock, 
+  FiDownload, 
+  FiLogOut 
 } from 'react-icons/fi';
 import { FaEthereum } from 'react-icons/fa';
 import { BsHexagonFill, BsShieldCheck } from 'react-icons/bs';
@@ -25,8 +27,8 @@ import {
   Card, 
   Button, 
   Input, 
-  NetworkModal,
-  LockScreen,
+  NetworkModal, 
+  LockScreen, 
   showToast 
 } from '../components';
 import { mockWallet } from '../utils/mockData';
@@ -35,7 +37,7 @@ import { walletService } from '../services';
 
 function Settings() {
   const navigate = useNavigate();
-  const { address, isUnlocked, isInitialized, resetWallet, changeUserPassword } = useWallet();
+  const { address, isUnlocked, isInitialized, lockWallet, resetWallet, changeUserPassword } = useWallet();
   const { isDarkMode, toggleTheme } = useTheme();
   const activeAddress = address || mockWallet.address;
 
@@ -44,6 +46,7 @@ function Settings() {
   const [isRevealPhraseOpen, setIsRevealPhraseOpen] = useState(false);
   const [isExportKeyOpen, setIsExportKeyOpen] = useState(false);
   const [isClearWalletModalOpen, setIsClearWalletModalOpen] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   
   // Decryption credentials state
   const [authPassword, setAuthPassword] = useState('');
@@ -140,15 +143,33 @@ function Settings() {
     setTimeout(() => setCopiedKey(false), 2000);
   };
 
+  // Export Encrypted Keystore JSON Backup
+  const handleExportEncryptedWallet = () => {
+    const walletData = walletService.getStoredWalletData();
+    if (!walletData) {
+      showToast.error('No wallet found to export.');
+      return;
+    }
+    const blob = new Blob([JSON.stringify(walletData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `EtherVault-Keystore-${activeAddress.slice(0, 8)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast.success('Encrypted wallet keystore downloaded.');
+  };
+
+  // Lock Session (Logout)
+  const handleLogoutSession = () => {
+    lockWallet();
+    showToast.info('Session locked. Enter password to unlock.');
+    navigate('/unlock');
+  };
+
   // Clear Wallet Data & Return Home
   const handleConfirmClearWallet = () => {
     resetWallet();
-    try {
-      localStorage.removeItem('ethervault_transactions_v1');
-      localStorage.removeItem('ethervault_active_address');
-    } catch (e) {
-      console.warn('Error clearing local storage items:', e);
-    }
     setIsClearWalletModalOpen(false);
     showToast.info('Local wallet data deleted successfully.');
     navigate('/');
@@ -437,7 +458,62 @@ function Settings() {
                 </Card>
               </motion.div>
 
-              {/* 5. About EtherVault & Version 1.0 */}
+              {/* 5. Wallet Preferences & Backup */}
+              <motion.div variants={itemVariants}>
+                <Card className="mb-4">
+                  <div className="settings-section-title text-white">
+                    <FiDownload className="text-orange fs-5" /> Wallet Backup & Preferences
+                  </div>
+                  <p className="text-muted small mb-3">
+                    Export your encrypted Keystore JSON file and customize wallet background refresh.
+                  </p>
+
+                  <div className="d-flex flex-column gap-3">
+                    <div className="glass-panel p-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                      <div>
+                        <div className="fw-bold text-white mb-0">Export Encrypted Keystore</div>
+                        <div className="small text-muted font-mono">Download password-protected JSON backup file</div>
+                      </div>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={handleExportEncryptedWallet}
+                        icon={<FiDownload />}
+                      >
+                        Export Keystore (JSON)
+                      </Button>
+                    </div>
+
+                    <div className="glass-panel p-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                      <div>
+                        <div className="fw-bold text-white mb-0">Live Auto-Refresh</div>
+                        <div className="small text-muted font-mono">Poll Sepolia blockchain every 15s for incoming ETH</div>
+                      </div>
+                      <div className="form-check form-switch fs-3 mb-0">
+                        <input
+                          className="form-check-input"
+                          type="checkbox"
+                          role="switch"
+                          id="autoRefreshSwitch"
+                          checked={autoRefresh}
+                          onChange={() => {
+                            setAutoRefresh(!autoRefresh);
+                            showToast.info(!autoRefresh ? 'Live Auto-Refresh enabled' : 'Live Auto-Refresh paused');
+                          }}
+                          aria-label="Toggle Auto Refresh"
+                          style={{
+                            cursor: 'pointer',
+                            backgroundColor: autoRefresh ? 'var(--orange)' : undefined,
+                            borderColor: autoRefresh ? 'var(--orange)' : undefined
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
+
+              {/* 6. About EtherVault & Version 1.0 */}
               <motion.div variants={itemVariants}>
                 <Card className="mb-4">
                   <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
@@ -460,7 +536,7 @@ function Settings() {
                   </div>
 
                   <p className="text-muted small mb-3" style={{ lineHeight: '1.7' }}>
-                    EtherVault is a modern, client-side encrypted cryptocurrency wallet engineered with React, Ethers.js v6, crypto-js AES encryption, and Framer Motion. Your cryptographic keys never touch external servers and are stored strictly in AES-encrypted format.
+                    EtherVault is a client-side encrypted cryptocurrency wallet engineered with React, Ethers.js v6, and Framer Motion. Your cryptographic keys are password-encrypted using standard Keystore JSON and kept in memory only during active sessions.
                   </p>
 
                   <div className="glass-panel p-3">
@@ -479,33 +555,54 @@ function Settings() {
                       </div>
                       <div className="col-sm-6 col-12 d-flex justify-content-between align-items-center">
                         <span className="text-muted">Storage Encryption:</span>
-                        <span className="text-success fw-bold">AES-256 (CryptoJS)</span>
+                        <span className="text-success fw-bold">Ethers Keystore (AES-128-CTR / Scrypt)</span>
                       </div>
                     </div>
                   </div>
                 </Card>
               </motion.div>
 
-              {/* 6. Danger Zone: Clear Wallet Data */}
+              {/* 7. Session Control & Danger Zone */}
               <motion.div variants={itemVariants}>
                 <Card className="danger-zone-card">
-                  <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
-                    <div>
-                      <h5 className="fw-bold text-danger mb-1 d-flex align-items-center gap-2">
-                        <FiAlertTriangle /> Clear Wallet Data
-                      </h5>
-                      <p className="text-muted small mb-0">
-                        Permanently delete local encrypted keystore and transaction history from this browser.
-                      </p>
+                  <div className="d-flex flex-column gap-3">
+                    <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 pb-3 border-bottom border-white border-opacity-10">
+                      <div>
+                        <h6 className="fw-bold text-white mb-1 d-flex align-items-center gap-2">
+                          <FiLogOut className="text-orange" /> Lock Session (Logout)
+                        </h6>
+                        <p className="text-muted small mb-0">
+                          Lock active session and wipe in-memory private keys. Your encrypted wallet stays safe on this device.
+                        </p>
+                      </div>
+                      <Button
+                        variant="glass"
+                        size="md"
+                        onClick={handleLogoutSession}
+                        icon={<FiLogOut className="text-orange" />}
+                      >
+                        Lock Session
+                      </Button>
                     </div>
-                    <Button
-                      variant="danger"
-                      size="md"
-                      onClick={() => setIsClearWalletModalOpen(true)}
-                      icon={<FiTrash2 />}
-                    >
-                      Clear Wallet
-                    </Button>
+
+                    <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                      <div>
+                        <h6 className="fw-bold text-danger mb-1 d-flex align-items-center gap-2">
+                          <FiAlertTriangle /> Clear Wallet Data
+                        </h6>
+                        <p className="text-muted small mb-0">
+                          Permanently delete local encrypted keystore and transaction history from this browser.
+                        </p>
+                      </div>
+                      <Button
+                        variant="danger"
+                        size="md"
+                        onClick={() => setIsClearWalletModalOpen(true)}
+                        icon={<FiTrash2 />}
+                      >
+                        Clear Wallet
+                      </Button>
+                    </div>
                   </div>
                 </Card>
               </motion.div>

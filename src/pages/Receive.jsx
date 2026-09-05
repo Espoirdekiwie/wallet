@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code';
 import { 
@@ -17,12 +17,12 @@ import {
   Card, 
   Button, 
   Input, 
-  LockScreen,
+  LockScreen, 
   showToast 
 } from '../components';
 import { mockWallet } from '../utils/mockData';
 import { useWallet } from '../context';
-import { walletService } from '../services';
+import { walletService, getBalance } from '../services';
 
 function Receive() {
   const navigate = useNavigate();
@@ -32,6 +32,16 @@ function Receive() {
   const [amount, setAmount] = useState('');
   const [copied, setCopied] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [liveBalance, setLiveBalance] = useState('0.0000');
+
+  useEffect(() => {
+    if (!activeAddress) return;
+    getBalance(activeAddress)
+      .then((res) => {
+        if (res && res.formatted) setLiveBalance(res.formatted);
+      })
+      .catch((e) => console.warn('Receive page balance fetch:', e));
+  }, [activeAddress]);
 
   // Dynamic QR Code URI (EIP-681 standard)
   const qrUri = amount 
@@ -76,6 +86,7 @@ function Receive() {
     <>
       <Navbar
         walletAddress={activeAddress}
+        network="Ethereum Sepolia"
         onMobileMenuClick={() => setIsMobileNavOpen(true)}
       />
 
@@ -93,7 +104,7 @@ function Receive() {
                 <h2 className="fw-bold mb-0">
                   <FiArrowDownLeft className="text-purple me-2" /> Receive <span className="text-gradient">Assets</span>
                 </h2>
-                <p className="text-muted small mb-0 mt-1">Scan QR code or copy public address to receive crypto</p>
+                <p className="text-muted small mb-0 mt-1">Send Sepolia ETH to this address</p>
               </div>
               <Button variant="glass" size="sm" onClick={() => navigate('/dashboard')} icon={<FiArrowLeft />}>
                 Dashboard
@@ -101,11 +112,21 @@ function Receive() {
             </div>
 
             <Card className="text-center">
-              {/* Network Badge */}
-              <div className="d-inline-flex align-items-center gap-2 px-3 py-1 rounded-pill mb-4" style={{ background: 'rgba(168, 85, 247, 0.12)', border: '1px solid var(--glass-border-purple)' }}>
-                <FaEthereum className="text-purple" />
-                <span className="small fw-bold text-purple-light font-mono">Ethereum & ERC-20 Network</span>
+              {/* Network & Live Balance Badge */}
+              <div className="d-flex justify-content-center gap-2 flex-wrap mb-4">
+                <div className="d-inline-flex align-items-center gap-2 px-3 py-1 rounded-pill" style={{ background: 'rgba(168, 85, 247, 0.12)', border: '1px solid var(--glass-border-purple)' }}>
+                  <FaEthereum className="text-purple" />
+                  <span className="small fw-bold text-purple-light font-mono">Ethereum Sepolia</span>
+                </div>
+                <div className="d-inline-flex align-items-center gap-2 px-3 py-1 rounded-pill" style={{ background: 'rgba(255, 107, 0, 0.12)', border: '1px solid var(--glass-border-orange)' }}>
+                  <span className="small fw-bold text-orange font-mono">Balance: {liveBalance} ETH</span>
+                </div>
               </div>
+
+              {/* Instructions */}
+              <p className="text-muted small mb-4">
+                Send Sepolia ETH to this address. Transactions will automatically reflect on your dashboard.
+              </p>
 
               {/* Luminous QR Frame */}
               <div className="d-flex justify-content-center mb-4">

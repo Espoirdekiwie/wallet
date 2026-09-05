@@ -8,7 +8,10 @@ import {
   FiAlertTriangle, 
   FiArrowRight, 
   FiArrowLeft,
-  FiLock
+  FiLock,
+  FiEye,
+  FiEyeOff,
+  FiCopy
 } from 'react-icons/fi';
 import { Button, Card, showToast } from '../components';
 import { useWallet } from '../context';
@@ -16,18 +19,23 @@ import { mockWallet } from '../utils/mockData';
 
 function RecoveryPhrase() {
   const navigate = useNavigate();
-  const { pendingMnemonic, address, finalizeAndSaveWallet } = useWallet();
+  const { pendingMnemonic, pendingPrivateKey, address, finalizeAndSaveWallet } = useWallet();
 
   // Use dynamically generated phrase from ethers.js or fallback if testing page directly
   const activePhrase = pendingMnemonic || mockWallet.mnemonic;
   const activeAddress = address || mockWallet.address;
+  const activePrivateKey = pendingPrivateKey || mockWallet.privateKey;
   const words = (activePhrase || '').split(' ');
   const fullPhrase = activePhrase || '';
 
   const [copied, setCopied] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [copiedAddress, setCopiedAddress] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
   const [encrypting, setEncrypting] = useState(false);
   const [encryptionProgress, setEncryptionProgress] = useState('');
+  const [confirmedBackup, setConfirmedBackup] = useState(false);
 
 
   // 1. Copy Phrase to Clipboard
@@ -46,6 +54,7 @@ function RecoveryPhrase() {
       '=================================================================',
       '',
       `Wallet Public Address: ${activeAddress}`,
+      `Private Key: ${activePrivateKey || 'N/A'}`,
       `Created: ${new Date().toLocaleString()}`,
       '',
       '-----------------------------------------------------------------',
@@ -55,7 +64,7 @@ function RecoveryPhrase() {
       '',
       '-----------------------------------------------------------------',
       'CRITICAL SECURITY WARNING:',
-      '• NEVER share your recovery phrase with anyone.',
+      '• NEVER share your recovery phrase or private key with anyone.',
       '• EtherVault will NEVER ask for your recovery phrase.',
       '• Anyone who gets these 12 words can access and steal your funds.',
       '• Store this file offline on a secure external device or write it down.',
@@ -184,6 +193,75 @@ function RecoveryPhrase() {
               </div>
             </div>
 
+            {/* Generated Address & Private Key Details */}
+            <div className="glass-panel p-3 mb-4 text-start font-mono small">
+              <div className="mb-2">
+                <div className="d-flex justify-content-between align-items-center mb-1">
+                  <span className="text-muted">Generated Address:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(activeAddress);
+                      setCopiedAddress(true);
+                      showToast.success('Address copied!');
+                      setTimeout(() => setCopiedAddress(false), 2000);
+                    }}
+                    className="btn btn-sm btn-vault-glass p-1 py-0 d-flex align-items-center gap-1 font-mono"
+                  >
+                    {copiedAddress ? <FiCheck className="text-success" /> : <FiCopy />} Copy
+                  </button>
+                </div>
+                <div className="text-white fw-bold text-break">{activeAddress}</div>
+              </div>
+
+              <div className="pt-2 border-top border-white border-opacity-10">
+                <div className="d-flex justify-content-between align-items-center mb-1">
+                  <span className="text-muted">Private Key:</span>
+                  <div className="d-flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowPrivateKey(!showPrivateKey)}
+                      className="btn btn-sm btn-vault-glass p-1 py-0 text-muted d-flex align-items-center gap-1 font-mono"
+                    >
+                      {showPrivateKey ? <FiEyeOff /> : <FiEye />} {showPrivateKey ? 'Hide' : 'Show'}
+                    </button>
+                    {activePrivateKey && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(activePrivateKey);
+                          setCopiedKey(true);
+                          showToast.success('Private key copied!');
+                          setTimeout(() => setCopiedKey(false), 2000);
+                        }}
+                        className="btn btn-sm btn-vault-glass p-1 py-0 d-flex align-items-center gap-1 font-mono"
+                      >
+                        {copiedKey ? <FiCheck className="text-success" /> : <FiCopy />} Copy
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="text-orange fw-bold text-break font-mono">
+                  {showPrivateKey ? (activePrivateKey || '••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••') : '••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••'}
+                </div>
+              </div>
+            </div>
+
+            {/* Backup Confirmation Checkbox */}
+            <div className="form-check mb-4 text-start font-mono small d-flex align-items-center gap-2">
+              <input
+                className="form-check-input mt-0"
+                type="checkbox"
+                id="confirmBackup"
+                checked={confirmedBackup}
+                onChange={(e) => setConfirmedBackup(e.target.checked)}
+                style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+              />
+              <label className="form-check-label text-muted" htmlFor="confirmBackup" style={{ cursor: 'pointer' }}>
+                I have written down and saved my 12-word recovery phrase offline.
+              </label>
+            </div>
+
             {/* Encryption Progress Indicator */}
             {encryptionProgress && (
               <div className="text-center font-mono small text-orange mb-3 animate-pulse">
@@ -198,6 +276,7 @@ function RecoveryPhrase() {
                 variant="primary"
                 size="lg"
                 loading={encrypting}
+                disabled={encrypting || !confirmedBackup}
                 onClick={handleContinue}
                 icon={<FiArrowRight />}
               >

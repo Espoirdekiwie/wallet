@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -31,7 +31,7 @@ import {
 } from '../components';
 import { mockWallet, getStoredTransactions, shortenAddress } from '../utils/mockData';
 import { useWallet } from '../context';
-import { getBalance, getNetwork } from '../services/blockchain';
+import { getBalance, getNetwork, getGasPrice } from '../services/blockchain';
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -39,12 +39,14 @@ function Dashboard() {
   const activeAddress = address || mockWallet.address;
   const recentTransactions = getStoredTransactions().slice(0, 2);
 
-  // Live Sepolia ETH and USD Balance states
+  // Live Sepolia ETH, Gas and USD Balance states
   const [ethBalance, setEthBalance] = useState('0.0000');
   const [usdBalance, setUsdBalance] = useState('0.00');
+  const [gasPrice, setGasPrice] = useState('18.0 Gwei');
   const [networkName, setNetworkName] = useState('Ethereum Sepolia');
   const [loadingBalance, setLoadingBalance] = useState(false);
   const ethPrice = mockWallet.ethPrice; // $3,250.45 reference price
+  const prevBalanceRef = useRef(null);
 
   const [isUsd, setIsUsd] = useState(false);
   const [hideBalance, setHideBalance] = useState(false);
@@ -55,23 +57,29 @@ function Dashboard() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [selectedNetwork, setSelectedNetwork] = useState('sepolia');
 
-  // PART 3: Fetch live balance from Sepolia blockchain & refresh every 15s
+  // PART 3: Fetch live balance from Sepolia blockchain & refresh
   const handleManualRefresh = useCallback(async () => {
     if (!activeAddress) return;
     try {
       setLoadingBalance(true);
-      const balanceData = await getBalance(activeAddress);
+      const [balanceData, net, gas] = await Promise.all([
+        getBalance(activeAddress),
+        getNetwork(),
+        getGasPrice()
+      ]);
       setEthBalance(balanceData.formatted);
 
       const etherValue = parseFloat(balanceData.ether || '0');
       const calculatedUsd = (etherValue * ethPrice).toFixed(2);
       setUsdBalance(calculatedUsd);
 
-      const net = await getNetwork();
       if (net && net.name) {
         setNetworkName(net.name);
       }
-      showToast.success(`Balance updated: ${balanceData.formatted} ETH`);
+      if (gas) {
+        setGasPrice(gas);
+      }
+      showToast.success(`Balance updated: ${balanceData.formatted} ETH (${gas})`);
     } catch (err) {
       console.warn('Sepolia balance fetch warning:', err);
       showToast.warning('Failed to fetch balance. Check network connection.');
@@ -80,6 +88,7 @@ function Dashboard() {
     }
   }, [activeAddress, ethPrice]);
 
+  // Requirement 10: Automatic live balance polling & receive detection every 15 seconds
   useEffect(() => {
     let isCancelled = false;
 
@@ -88,9 +97,17 @@ function Dashboard() {
       try {
         const balanceData = await getBalance(activeAddress);
         if (!isCancelled) {
+          const currentEtherVal = parseFloat(balanceData.ether || '0');
+
+          // Detect incoming ETH
+          if (prevBalanceRef.current !== null && currentEtherVal > prevBalanceRef.current) {
+            const diff = (currentEtherVal - prevBalanceRef.current).toFixed(4);
+            showToast.success(`ETH Received: +${diff} ETH on Sepolia!`);
+          }
+          prevBalanceRef.current = currentEtherVal;
+
           setEthBalance(balanceData.formatted);
-          const etherValue = parseFloat(balanceData.ether || '0');
-          setUsdBalance((etherValue * ethPrice).toFixed(2));
+          setUsdBalance((currentEtherVal * ethPrice).toFixed(2));
         }
 
         const net = await getNetwork();
@@ -110,6 +127,30 @@ function Dashboard() {
       clearInterval(interval);
     };
   }, [activeAddress, ethPrice]);
+
+  // Requirement 11: Gas price polling every 30 seconds
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadGas = async () => {
+      try {
+        const currentGas = await getGasPrice();
+        if (!isCancelled && currentGas) {
+          setGasPrice(currentGas);
+        }
+      } catch (err) {
+        console.warn('Gas price fetch warning:', err);
+      }
+    };
+
+    loadGas();
+    const gasInterval = setInterval(loadGas, 30000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(gasInterval);
+    };
+  }, []);
 
   const toggleCurrency = () => {
     setIsUsd(!isUsd);
@@ -253,9 +294,12 @@ function Dashboard() {
                       </button>
                     </div>
                   </div>
-                  <div>
+                  <div className="d-flex gap-2 justify-content-end flex-wrap">
                     <span className="badge bg-purple bg-opacity-25 text-purple-light font-mono px-3 py-1">
                       ETH Ref: ${ethPrice}
+                    </span>
+                    <span className="badge bg-warning bg-opacity-25 text-warning font-mono px-3 py-1" title="Current Sepolia Gas Price (updates every 30s)">
+                      ⛽ {gasPrice}
                     </span>
                   </div>
                 </div>
@@ -340,11 +384,13 @@ function Dashboard() {
                     <div className="glass-panel p-3 mb-3">
                       <div className="d-flex justify-content-between align-items-center mb-2">
                         <span className="small text-muted font-mono">ACTIVE RPC NETWORK</span>
-                        <span className="badge bg-success bg-opacity-25 text-success">Connected</span>
+                        <span className={`badge ${networkName === 'Offline' ? 'bg-danger bg-opacity-25 text-danger' : 'bg-success bg-opacity-25 text-success'}`}>
+                          {networkName === 'Offline' ? 'Offline' : 'Connected'}
+                        </span>
                       </div>
                       <div className="d-flex justify-content-between align-items-center">
                         <span className="fw-bold font-mono text-white">
-                          {selectedNetwork === 'mainnet' ? 'Ethereum Mainnet' : selectedNetwork}
+                          {networkName}
                         </span>
                         <button
                           onClick={() => setIsNetworkOpen(true)}
@@ -353,6 +399,14 @@ function Dashboard() {
                           Switch
                         </button>
                       </div>
+                    </div>
+
+                    <div className="glass-panel p-3 mb-3">
+                      <div className="d-flex justify-content-between align-items-center mb-1">
+                        <span className="small text-muted font-mono">SEPOLIA GAS PRICE</span>
+                        <span className="badge bg-warning bg-opacity-25 text-warning font-mono">{gasPrice}</span>
+                      </div>
+                      <div className="small text-dim">Live on-chain rate · Refreshes every 30s</div>
                     </div>
 
                     <div className="glass-panel p-3">

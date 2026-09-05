@@ -84,14 +84,16 @@ export async function getNetwork() {
     return {
       name: 'Ethereum Sepolia',
       chainId: network.chainId,
-      isSepolia: network.chainId === SEPOLIA_CHAIN_ID
+      isSepolia: network.chainId === SEPOLIA_CHAIN_ID,
+      isOnline: true
     };
   } catch (error) {
-    console.warn('Failed to detect network:', error);
+    console.warn('Failed to detect network (Offline/RPC unreachable):', error);
     return {
-      name: 'Ethereum Sepolia',
-      chainId: SEPOLIA_CHAIN_ID,
-      isSepolia: true
+      name: 'Offline',
+      chainId: 0n,
+      isSepolia: false,
+      isOnline: false
     };
   }
 }
