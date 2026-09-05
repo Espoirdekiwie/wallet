@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react'
-import { Routes, Route, useLocation } from 'react-router-dom'
-import { ToastContainer } from 'react-toastify'
+import React, { useEffect } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
+import { ErrorBoundary } from './components';
 
 // Page Imports
 import {
@@ -8,34 +9,37 @@ import {
   CreatePassword,
   RecoveryPhrase,
   ImportWallet,
+  Unlock,
   Dashboard,
   Send,
   Receive,
   Transactions,
   Settings,
   NotFound
-} from './pages'
+} from './pages';
 
 // ScrollToTop on Route Change
 function ScrollToTop() {
-  const { pathname } = useLocation()
+  const { pathname } = useLocation();
 
   useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [pathname])
+    window.scrollTo(0, 0);
+  }, [pathname]);
 
-  return null
+  return null;
 }
 
 function App() {
   return (
-    <>
+    <ErrorBoundary>
       <ScrollToTop />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/create-password" element={<CreatePassword />} />
         <Route path="/recovery-phrase" element={<RecoveryPhrase />} />
+        <Route path="/import" element={<ImportWallet />} />
         <Route path="/import-wallet" element={<ImportWallet />} />
+        <Route path="/unlock" element={<Unlock />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/send" element={<Send />} />
         <Route path="/receive" element={<Receive />} />
@@ -58,8 +62,8 @@ function App() {
         pauseOnHover
         theme="dark"
       />
-    </>
-  )
+    </ErrorBoundary>
+  );
 }
 
-export default App
+export default App;

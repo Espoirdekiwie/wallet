@@ -35,7 +35,7 @@ import { getBalance, getNetwork } from '../services/blockchain';
 
 function Dashboard() {
   const navigate = useNavigate();
-  const { address, isUnlocked, isInitialized, lockWallet } = useWallet();
+  const { address, isUnlocked, isInitialized, logout } = useWallet();
   const activeAddress = address || mockWallet.address;
   const recentTransactions = getStoredTransactions().slice(0, 2);
 
@@ -51,6 +51,7 @@ function Dashboard() {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
   const [isNetworkOpen, setIsNetworkOpen] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [selectedNetwork, setSelectedNetwork] = useState('sepolia');
 
@@ -124,12 +125,19 @@ function Dashboard() {
   };
 
   const handleConfirmLogout = () => {
-    lockWallet();
-    showToast.info('Wallet locked & session cleared.');
+    logout();
+    setIsLogoutModalOpen(false);
+    showToast.info('Logged out & wallet removed from this device.');
     navigate('/');
   };
 
-  // PART 8: If local wallet exists but session is locked, show LockScreen
+  // If no wallet exists in storage, redirect to import
+  if (!isInitialized) {
+    navigate('/import-wallet');
+    return null;
+  }
+
+  // If local wallet exists but session is locked, show LockScreen
   if (isInitialized && !isUnlocked) {
     return <LockScreen />;
   }

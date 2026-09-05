@@ -146,7 +146,13 @@ function Send() {
     }
   };
 
-  // PART 8: If local wallet exists but session is locked, show LockScreen
+  // If no wallet exists in storage, redirect to import
+  if (!isInitialized) {
+    navigate('/import-wallet');
+    return null;
+  }
+
+  // If local wallet exists but session is locked, show LockScreen
   if (isInitialized && !isUnlocked) {
     return <LockScreen />;
   }

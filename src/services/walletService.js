@@ -1,74 +1,161 @@
 /**
  * walletService.js
  * 
- * Cryptographic wallet generation and management using ethers.js v6
- * and AES encryption via encryption.js.
+ * Unified cryptographic wallet management using Ethers.js v6.
  * 
- * Sensitive keys (privateKey, mnemonic) are encrypted before saving
- * and never stored unencrypted in localStorage.
+ * Storage Model:
+ * Single localStorage key: "wallet"
+ * Schema: { address: string, encryptedJson: string, network: "sepolia", createdAt: number }
+ * 
+ * Decrypted private keys and mnemonic phrases are NEVER stored in localStorage.
+ * Only Keystore JSON encrypted with the user's password is saved.
  */
 
 import { ethers } from 'ethers';
-import { 
-  encryptWallet, 
-  decryptWallet, 
-  hasEncryptedWallet, 
-  clearEncryptedWallet,
-  ADDRESS_KEY 
-} from './encryption';
+
+export const WALLET_STORAGE_KEY = 'wallet';
 
 export const walletService = {
   /**
-   * Generates a new random HD wallet using ethers.Wallet.createRandom().
-   * Encrypts the wallet payload with AES using the user password.
-   * Only the ciphertext is stored in localStorage under 'encryptedWallet'.
-   * 
-   * @param {string} password - Master password (min 8 chars)
-   * @returns {Promise<{ address: string, mnemonic: string, privateKey: string, encryptedWallet: string }>}
+   * Reads and parses the stored wallet object from localStorage
+   * @returns {{ address: string, encryptedJson: string, network: string, createdAt: number } | null}
    */
-  async createWallet(password) {
+  getStoredWalletData() {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const raw = window.localStorage.getItem(WALLET_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.address && parsed.encryptedJson) {
+          return parsed;
+        }
+      }
+      return null;
+    } catch (e) {
+      console.warn('Error reading stored wallet data:', e);
+      return null;
+    }
+  },
+
+  /**
+   * Saves encrypted wallet record to localStorage
+   */
+  saveStoredWalletData(walletData) {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(walletData));
+        // Remove any old/legacy keys
+        this.cleanLegacyKeys();
+      }
+    } catch (e) {
+      console.error('Failed to save wallet to localStorage:', e);
+    }
+  },
+
+  /**
+   * Cleans any legacy/unencrypted keys from storage
+   */
+  cleanLegacyKeys() {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const legacyKeys = [
+      'encryptedWallet',
+      'ethervault_keystore_v1',
+      'ethervault_active_address',
+      'ethervault_private_key',
+      'ethervault_mnemonic',
+      'address',
+      'privateKey',
+      'mnemonic',
+      'mnemonic phrase'
+    ];
+    legacyKeys.forEach(k => window.localStorage.removeItem(k));
+  },
+
+  /**
+   * Checks if an encrypted wallet is present in localStorage
+   * @returns {boolean}
+   */
+  hasStoredWallet() {
+    const data = this.getStoredWalletData();
+    return Boolean(data && data.encryptedJson);
+  },
+
+  /**
+   * Returns the stored public Ethereum address
+   * @returns {string|null}
+   */
+  getStoredAddress() {
+    const data = this.getStoredWalletData();
+    return data ? data.address : null;
+  },
+
+  /**
+   * Generates a new random HD wallet using Ethers v6,
+   * encrypts it using standard Keystore JSON (wallet.encrypt),
+   * and saves only { address, encryptedJson, network: "sepolia", createdAt } to localStorage.
+   * 
+   * @param {string} password - Master password
+   * @param {function} [onProgress] - Optional encryption progress callback (0.0 to 1.0)
+   * @returns {Promise<{ address: string, mnemonic: string, privateKey: string, walletData: Object }>}
+   */
+  async createWallet(password, onProgress = undefined) {
     if (!password || password.length < 8) {
       throw new Error('Password must be at least 8 characters long.');
     }
 
     try {
+      // 1. Generate random HD wallet
       const wallet = ethers.Wallet.createRandom();
 
       if (!wallet.mnemonic || !wallet.mnemonic.phrase) {
-        throw new Error('Failed to generate mnemonic entropy for HD wallet.');
+        throw new Error('Failed to generate mnemonic for HD wallet.');
       }
 
       const address = wallet.address;
       const mnemonic = wallet.mnemonic.phrase;
       const privateKey = wallet.privateKey;
 
-      // Encrypt with AES and persist only the ciphertext
-      const encryptedWallet = encryptWallet({ address, privateKey, mnemonic }, password);
+      // 2. Encrypt using standard Ethers Keystore format
+      const callback = typeof onProgress === 'function' ? onProgress : undefined;
+      const encryptedJson = await wallet.encrypt(password, callback);
+
+      // 3. Save ONLY this object to localStorage
+      const walletData = {
+        address,
+        encryptedJson,
+        network: 'sepolia',
+        createdAt: Date.now()
+      };
+
+      this.saveStoredWalletData(walletData);
 
       return {
         address,
         mnemonic,
         privateKey,
-        encryptedWallet
+        walletData
       };
     } catch (error) {
       console.error('Wallet creation error:', error);
-      throw new Error(error.message || 'An error occurred while generating the cryptographic wallet.');
+      throw new Error(error.message || 'An error occurred while generating cryptographic wallet.');
     }
   },
 
   /**
-   * Restores a wallet from a 12-word BIP39 mnemonic and encrypts with password.
+   * Restores a wallet from a 12-word BIP39 mnemonic phrase,
+   * encrypts using wallet.encrypt(password),
+   * and saves only { address, encryptedJson, network: "sepolia", createdAt } to localStorage.
    * 
-   * @param {string} mnemonicPhrase - 12-word recovery phrase
+   * @param {string} mnemonicPhrase - 12-word BIP39 recovery phrase
    * @param {string} password - Master password
-   * @returns {Promise<{ address: string, mnemonic: string, privateKey: string, encryptedWallet: string }>}
+   * @param {function} [onProgress] - Optional progress callback
+   * @returns {Promise<{ address: string, mnemonic: string, privateKey: string, walletData: Object }>}
    */
-  async importFromMnemonic(mnemonicPhrase, password) {
-    const cleanPhrase = mnemonicPhrase.trim().replace(/\s+/g, ' ');
+  async importFromMnemonic(mnemonicPhrase, password, onProgress = undefined) {
+    const cleanPhrase = (mnemonicPhrase || '').trim().replace(/\s+/g, ' ');
 
     if (!ethers.Mnemonic.isValidMnemonic(cleanPhrase)) {
-      throw new Error('Invalid 12-word BIP39 recovery phrase. Please check word spelling.');
+      throw new Error('Invalid 12-word BIP39 recovery phrase. Please check spelling and word order.');
     }
 
     if (!password || password.length < 8) {
@@ -80,13 +167,23 @@ export const walletService = {
       const address = wallet.address;
       const privateKey = wallet.privateKey;
 
-      const encryptedWallet = encryptWallet({ address, privateKey, mnemonic: cleanPhrase }, password);
+      const callback = typeof onProgress === 'function' ? onProgress : undefined;
+      const encryptedJson = await wallet.encrypt(password, callback);
+
+      const walletData = {
+        address,
+        encryptedJson,
+        network: 'sepolia',
+        createdAt: Date.now()
+      };
+
+      this.saveStoredWalletData(walletData);
 
       return {
         address,
         mnemonic: cleanPhrase,
         privateKey,
-        encryptedWallet
+        walletData
       };
     } catch (error) {
       console.error('Wallet import error:', error);
@@ -95,42 +192,83 @@ export const walletService = {
   },
 
   /**
-   * Decrypts the stored AES encrypted wallet with user password.
+   * Decrypts the stored Keystore JSON from localStorage using ethers.Wallet.fromEncryptedJson.
+   * If password is wrong, throws 'Wrong Password' without crashing.
    * 
-   * @param {string|null} cipher - Ciphertext string or null to read from storage
-   * @param {string} password - Master password
+   * @param {string} password - User password
+   * @param {function} [onProgress] - Optional progress callback
    * @returns {Promise<{ address: string, privateKey: string, mnemonic: string|null }>}
    */
-  async decryptWallet(cipher, password) {
-    return decryptWallet(cipher, password);
-  },
+  async decryptWallet(password, onProgress = undefined) {
+    const walletData = this.getStoredWalletData();
 
-  /**
-   * Checks if an encrypted wallet exists in storage
-   */
-  hasStoredWallet() {
-    return hasEncryptedWallet();
-  },
+    if (!walletData || !walletData.encryptedJson) {
+      throw new Error('No wallet found. Please import or create a wallet.');
+    }
 
-  /**
-   * Gets public active address
-   */
-  getStoredAddress() {
+    if (!password) {
+      throw new Error('Wrong Password');
+    }
+
     try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(ADDRESS_KEY) || window.localStorage.getItem('address');
-      }
-      return null;
-    } catch {
-      return null;
+      const callback = typeof onProgress === 'function' ? onProgress : undefined;
+      const wallet = await ethers.Wallet.fromEncryptedJson(walletData.encryptedJson, password, callback);
+
+      return {
+        address: wallet.address,
+        privateKey: wallet.privateKey,
+        mnemonic: wallet.mnemonic ? wallet.mnemonic.phrase : null
+      };
+    } catch (error) {
+      console.warn('Unlock attempt failed: Wrong Password', error);
+      throw new Error('Wrong Password');
     }
   },
 
   /**
-   * Clears all stored wallet credentials
+   * Re-encrypts the stored wallet with a new password
+   */
+  async changePassword(oldPassword, newPassword, onProgress = undefined) {
+    if (!oldPassword || !newPassword) {
+      throw new Error('Both current and new passwords are required.');
+    }
+
+    if (newPassword.length < 8) {
+      throw new Error('New password must be at least 8 characters long.');
+    }
+
+    // 1. Decrypt with old password
+    const decrypted = await this.decryptWallet(oldPassword);
+
+    // 2. Re-encrypt with new password
+    const wallet = new ethers.Wallet(decrypted.privateKey);
+    const callback = typeof onProgress === 'function' ? onProgress : undefined;
+    const newEncryptedJson = await wallet.encrypt(newPassword, callback);
+
+    const walletData = {
+      address: decrypted.address,
+      encryptedJson: newEncryptedJson,
+      network: 'sepolia',
+      createdAt: Date.now()
+    };
+
+    this.saveStoredWalletData(walletData);
+
+    return decrypted;
+  },
+
+  /**
+   * Deletes the stored wallet from localStorage
    */
   clearStorage() {
-    clearEncryptedWallet();
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem(WALLET_STORAGE_KEY);
+        this.cleanLegacyKeys();
+      }
+    } catch (e) {
+      console.warn('Error clearing wallet storage:', e);
+    }
   },
 
   isValidAddress(address) {

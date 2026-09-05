@@ -31,7 +31,7 @@ import {
 } from '../components';
 import { mockWallet } from '../utils/mockData';
 import { useWallet, useTheme } from '../context';
-import { decryptWallet } from '../services/encryption';
+import { walletService } from '../services';
 
 function Settings() {
   const navigate = useNavigate();
@@ -67,7 +67,7 @@ function Settings() {
   };
 
   // PART 9: Change Password & Re-encrypt Wallet
-  const handleChangePasswordSubmit = (e) => {
+  const handleChangePasswordSubmit = async (e) => {
     e.preventDefault();
     setPasswordError('');
 
@@ -87,7 +87,7 @@ function Settings() {
     setPasswordLoading(true);
 
     try {
-      changeUserPassword(currentPassword, newPassword);
+      await changeUserPassword(currentPassword, newPassword);
       showToast.success('Password updated & wallet re-encrypted successfully!');
       setCurrentPassword('');
       setNewPassword('');
@@ -103,7 +103,7 @@ function Settings() {
   };
 
   // PART 10: Unlock credentials check (Reveal Phrase / Export Private Key)
-  const handleUnlockKeys = (e) => {
+  const handleUnlockKeys = async (e) => {
     e.preventDefault();
     setAuthError('');
 
@@ -113,7 +113,7 @@ function Settings() {
     }
 
     try {
-      const decrypted = decryptWallet(null, authPassword);
+      const decrypted = await walletService.decryptWallet(authPassword);
       setDecryptedData(decrypted);
       setAuthError('');
       showToast.success('Credentials decrypted successfully.');
@@ -166,6 +166,12 @@ function Settings() {
     hidden: { opacity: 0, y: 15 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.4, 0, 0.2, 1] } }
   };
+
+  // If no wallet exists in storage, redirect to import
+  if (!isInitialized) {
+    navigate('/import-wallet');
+    return null;
+  }
 
   // If local wallet exists but session is locked, show LockScreen
   if (isInitialized && !isUnlocked) {
